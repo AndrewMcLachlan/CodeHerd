@@ -27,6 +27,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     name: 'CodeHerd',
+    executableName: 'codeherd',
     icon: './assets/icon',
   },
   rebuildConfig: {
