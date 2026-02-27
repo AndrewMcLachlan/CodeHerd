@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:;">
+  <link rel="stylesheet" href="./xterm.css">
+  <link rel="stylesheet" href="./styles.css">
+  <title>CodeHerd</title>
+</head>
+<body>
+  <div id="app">
+    <div id="titlebar">
+      <button id="app-menu-btn" title="Menu"><img id="app-menu-icon" src="" alt=""></button>
+      <div id="tab-bar"></div>
+      <button id="new-tab-btn" title="New Tab (Ctrl+T)">+</button>
+      <div id="titlebar-drag"></div>
+    </div>
+    <div id="main-content">
+      <div id="sidebar" class="collapsed">
+        <div id="sidebar-toggle" title="Toggle Sessions (Ctrl+B)">
+          <span id="sidebar-toggle-icon">&rsaquo;</span>
+        </div>
+        <div id="sidebar-inner">
+          <div id="sidebar-header">Sessions</div>
+          <div id="session-list"></div>
+        </div>
+        <div id="sidebar-resize"></div>
+      </div>
+      <div id="terminal-container"></div>
+    </div>
+    <div id="status-bar" class="hidden">
+      <div id="status-left">
+        <span id="status-folder" class="status-item"></span>
+        <span id="status-git" class="status-item hidden"></span>
+        <span id="status-worktree" class="status-item hidden"></span>
+      </div>
+      <div id="status-right">
+        <span id="status-title" class="status-item hidden"></span>
+      </div>
+    </div>
+  </div>
+  <script src="./renderer.js"></script>
+</body>
+</html>

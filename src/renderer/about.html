@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'">
+  <title>About CodeHerd</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', -apple-system, sans-serif;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      overflow: hidden;
+    }
+    #titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 32px;
+      background: #11111b;
+      -webkit-app-region: drag;
+      font-size: 12px;
+      color: #a6adc8;
+      flex-shrink: 0;
+      position: relative;
+    }
+    #close-btn {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 40px;
+      height: 32px;
+      background: none;
+      border: none;
+      color: #a6adc8;
+      font-size: 24px;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #close-btn:hover { background: #f38ba8; color: #1e1e2e; }
+    #content {
+      flex: 1;
+      display: flex;
+      padding: 24px 32px;
+      gap: 24px;
+      align-items: center;
+    }
+    #icon { width: 96px; height: 96px; flex-shrink: 0; border-radius: 12px; }
+    #info { display: flex; flex-direction: column; gap: 6px; }
+    #name-row { display: flex; align-items: center; gap: 10px; }
+    #app-name { font-size: 22px; font-weight: 600; }
+    #version {
+      background: #89b4fa;
+      color: #1e1e2e;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    #description { font-size: 13px; color: #a6adc8; }
+    #links { display: flex; gap: 12px; margin-top: 4px; }
+    #links a {
+      color: #a6adc8;
+      text-decoration: none;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    #links a:hover { color: #89b4fa; }
+    #footer {
+      padding: 12px 32px;
+      font-size: 11px;
+      color: #6c7086;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="titlebar">
+    About
+    <button id="close-btn">&times;</button>
+  </div>
+  <div id="content">
+    <img id="icon" src="./icon.png" alt="CodeHerd">
+    <div id="info">
+      <div id="name-row">
+        <span id="app-name">CodeHerd</span>
+        <span id="version"></span>
+      </div>
+      <div id="description">Claude Code Session Manager</div>
+      <div id="links">
+        <a href="#" id="github-link">GitHub</a>
+      </div>
+    </div>
+  </div>
+  <div id="footer">
+    <span id="copyright"></span>
+    <span id="electron-info"></span>
+  </div>
+  <script>
+    document.getElementById('version').textContent = window.aboutInfo?.version || '';
+    const year = new Date().getFullYear();
+    const yearStr = year > 2026 ? `2026-${year}` : '2026';
+    document.getElementById('copyright').textContent = `Copyright \u00A9 ${yearStr} Andrew McLachlan`;
+    document.getElementById('electron-info').textContent =
+      `Electron ${window.aboutInfo?.electron || ''} | Node ${window.aboutInfo?.node || ''} | Chromium ${window.aboutInfo?.chrome || ''}`;
+    document.getElementById('close-btn').addEventListener('click', () => window.close());
+    document.getElementById('github-link').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.aboutInfo?.openGithub();
+    });
+  </script>
+</body>
+</html>
