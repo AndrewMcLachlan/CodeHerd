@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld('aboutInfo', {
   node: process.versions.node,
   chrome: process.versions.chrome,
   openGithub: () => ipcRenderer.send('about:open-github'),
+  closeWindow: () => ipcRenderer.send('about:close'),
 });

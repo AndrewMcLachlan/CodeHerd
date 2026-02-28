@@ -182,6 +182,15 @@ export function registerIpcHandlers(
     shell.openExternal('https://github.com/AndrewMcLachlan/CodeHerd');
   });
 
+  let aboutWin: BrowserWindow | null = null;
+
+  ipcMain.on('about:close', () => {
+    if (aboutWin && !aboutWin.isDestroyed()) {
+      aboutWin.destroy();
+      aboutWin = null;
+    }
+  });
+
   ipcMain.handle(IPC.MENU_ACTION, async (_event, action: string) => {
     const win = getMainWindow();
     if (!win) return;
@@ -190,7 +199,11 @@ export function registerIpcHandlers(
         app.quit();
         break;
       case 'about': {
-        const aboutWin = new BrowserWindow({
+        if (aboutWin && !aboutWin.isDestroyed()) {
+          aboutWin.focus();
+          break;
+        }
+        aboutWin = new BrowserWindow({
           width: 420,
           height: 240,
           resizable: false,
@@ -206,6 +219,7 @@ export function registerIpcHandlers(
             preload: path.join(__dirname, 'about-preload.js'),
           },
         });
+        aboutWin.on('closed', () => { aboutWin = null; });
         aboutWin.loadFile(path.join(__dirname, 'about.html'));
         break;
       }

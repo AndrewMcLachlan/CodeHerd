@@ -114,7 +114,7 @@
     document.getElementById('copyright').textContent = `Copyright \u00A9 ${yearStr} Andrew McLachlan`;
     document.getElementById('electron-info').textContent =
       `Electron ${window.aboutInfo?.electron || ''} | Node ${window.aboutInfo?.node || ''} | Chromium ${window.aboutInfo?.chrome || ''}`;
-    document.getElementById('close-btn').addEventListener('click', () => window.close());
+    document.getElementById('close-btn').addEventListener('click', () => window.aboutInfo?.closeWindow());
     document.getElementById('github-link').addEventListener('click', (e) => {
       e.preventDefault();
       window.aboutInfo?.openGithub();
