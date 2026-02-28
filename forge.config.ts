@@ -30,10 +30,7 @@ const config: ForgeConfig = {
     executableName: 'codeherd',
     icon: './assets/icon',
   },
-  rebuildConfig: {
-    // node-pty ships prebuilt binaries - skip native rebuild
-    onlyModules: [],
-  },
+  rebuildConfig: {},
   makers,
 };
 

@@ -107,5 +107,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  app.exit(0);
+  if (isQuitting) {
+    app.exit(0);
+  }
 });
