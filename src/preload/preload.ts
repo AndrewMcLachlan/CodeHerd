@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import type { TabCreateRequest, PtyDataMessage, AppState, TabState, ClaudeSession, GitInfo, RecentlyClosedTab } from '../shared/types';
+import type { TabCreateRequest, PtyDataMessage, AppState, TabState, ClaudeSession, GitInfo, RecentlyClosedTab, Preferences } from '../shared/types';
 
 contextBridge.exposeInMainWorld('codeherd', {
   // Invoke (request/response)
@@ -66,4 +66,21 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.on('menu:toggle-sidebar', listener);
     return () => { ipcRenderer.removeListener('menu:toggle-sidebar', listener); };
   },
+  onMenuPreferences: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('menu:preferences', listener);
+    return () => { ipcRenderer.removeListener('menu:preferences', listener); };
+  },
+  onPreferencesChanged: (callback: (prefs: Preferences) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, prefs: Preferences) => callback(prefs);
+    ipcRenderer.on('preferences:changed', listener);
+    return () => { ipcRenderer.removeListener('preferences:changed', listener); };
+  },
+  onThemeChanged: (callback: (resolvedTheme: string) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, resolvedTheme: string) => callback(resolvedTheme);
+    ipcRenderer.on(IPC.THEME_CHANGED, listener);
+    return () => { ipcRenderer.removeListener(IPC.THEME_CHANGED, listener); };
+  },
+  getResolvedTheme: (): Promise<string> =>
+    ipcRenderer.invoke(IPC.THEME_GET_RESOLVED),
 });

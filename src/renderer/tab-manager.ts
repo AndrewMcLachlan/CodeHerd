@@ -9,6 +9,7 @@ export class TabManager {
   private onTabSwitch: ((tab: TabState) => void) | null = null;
   private onTabClose: ((tab: TabState) => void) | null = null;
   private onAllTabsClosed: (() => void) | null = null;
+  private warnBeforeClose = true;
 
   constructor(terminalManager: TerminalManager) {
     this.tabBar = document.getElementById('tab-bar')!;
@@ -25,6 +26,10 @@ export class TabManager {
 
   setOnAllTabsClosed(callback: () => void): void {
     this.onAllTabsClosed = callback;
+  }
+
+  setWarnBeforeClose(warn: boolean): void {
+    this.warnBeforeClose = warn;
   }
 
   async createTab(folder: string, resumeSessionId?: string): Promise<TabState> {
@@ -82,8 +87,16 @@ export class TabManager {
   }
 
   async closeTab(tabId: TabId): Promise<void> {
-    // Notify before removing
     const closedTab = this.tabs.get(tabId);
+
+    // Confirm if the tab is still running and the preference is enabled
+    if (this.warnBeforeClose && closedTab && closedTab.status === 'running') {
+      if (!confirm(`Close "${closedTab.label}"? The Claude session will be stopped.`)) {
+        return;
+      }
+    }
+
+    // Notify before removing
     if (closedTab && this.onTabClose) {
       this.onTabClose(closedTab);
     }
@@ -106,6 +119,13 @@ export class TabManager {
 
     // Graceful shutdown happens in the background
     window.codeherd.closeTab(tabId);
+  }
+
+  updateStatus(tabId: TabId, status: TabState['status']): void {
+    const tab = this.tabs.get(tabId);
+    if (tab) {
+      tab.status = status;
+    }
   }
 
   markExited(tabId: TabId, exitCode: number): void {

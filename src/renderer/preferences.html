@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'">
+  <title>Preferences</title>
+  <link rel="stylesheet" href="themes.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', -apple-system, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      overflow: hidden;
+    }
+    #titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 32px;
+      background: var(--bg-surface);
+      -webkit-app-region: drag;
+      font-size: 12px;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+      position: relative;
+    }
+    #close-btn {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 40px;
+      height: 32px;
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 24px;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #close-btn:hover { background: var(--danger); color: var(--bg-base); }
+    #content {
+      flex: 1;
+      padding: 24px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .field label {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .checkbox-field {
+      flex-direction: row;
+      align-items: center;
+      gap: 10px;
+    }
+    .checkbox-field label {
+      cursor: pointer;
+    }
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    select, input[type="text"] {
+      background: var(--bg-overlay);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+    select:focus, input[type="text"]:focus {
+      border-color: var(--accent);
+    }
+    select option {
+      background: var(--bg-overlay);
+      color: var(--text-primary);
+    }
+    #custom-font-row {
+      margin-top: 6px;
+    }
+    #custom-font-row input {
+      width: 100%;
+    }
+    #buttons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 0 32px 20px;
+    }
+    button {
+      padding: 8px 20px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-overlay);
+      color: var(--text-primary);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover { background: var(--border); }
+    #save-btn {
+      background: var(--accent);
+      color: var(--bg-base);
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+    #save-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  </style>
+</head>
+<body>
+  <div id="titlebar">
+    Preferences
+    <button id="close-btn">&times;</button>
+  </div>
+  <div id="content">
+    <div class="field">
+      <label for="theme-select">Theme</label>
+      <select id="theme-select">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+        <option value="system">System</option>
+      </select>
+    </div>
+    <div class="field checkbox-field">
+      <input type="checkbox" id="warn-close" checked>
+      <label for="warn-close">Warn before closing tabs</label>
+    </div>
+    <div class="field">
+      <label for="font-select">Terminal font</label>
+      <select id="font-select">
+        <option value="">System default</option>
+        <option value="Cascadia Code">Cascadia Code</option>
+        <option value="Cascadia Mono">Cascadia Mono</option>
+        <option value="Consolas">Consolas</option>
+        <option value="Fira Code">Fira Code</option>
+        <option value="JetBrains Mono">JetBrains Mono</option>
+        <option value="Menlo">Menlo</option>
+        <option value="Monaco">Monaco</option>
+        <option value="Source Code Pro">Source Code Pro</option>
+        <option value="Ubuntu Mono">Ubuntu Mono</option>
+        <option value="__custom__">Custom...</option>
+      </select>
+      <div id="custom-font-row" style="display:none">
+        <input type="text" id="custom-font" placeholder="Enter font family name">
+      </div>
+    </div>
+  </div>
+  <div id="buttons">
+    <button id="cancel-btn">Cancel</button>
+    <button id="save-btn">Save</button>
+  </div>
+  <script>
+    // Apply theme before paint
+    if (window.preferencesAPI?.getTheme) {
+      document.documentElement.dataset.theme = window.preferencesAPI.getTheme();
+    }
+
+    const warnClose = document.getElementById('warn-close');
+    const fontSelect = document.getElementById('font-select');
+    const themeSelect = document.getElementById('theme-select');
+    const customFontRow = document.getElementById('custom-font-row');
+    const customFont = document.getElementById('custom-font');
+
+    fontSelect.addEventListener('change', () => {
+      customFontRow.style.display = fontSelect.value === '__custom__' ? 'block' : 'none';
+    });
+
+    // Load current preferences
+    window.preferencesAPI.getPreferences().then((prefs) => {
+      warnClose.checked = prefs.warnBeforeClosingTabs;
+      themeSelect.value = prefs.theme || 'dark';
+      // Check if font matches a preset option
+      const options = Array.from(fontSelect.options).map(o => o.value);
+      if (options.includes(prefs.fontFamily)) {
+        fontSelect.value = prefs.fontFamily;
+      } else if (prefs.fontFamily) {
+        fontSelect.value = '__custom__';
+        customFontRow.style.display = 'block';
+        customFont.value = prefs.fontFamily;
+      }
+    });
+
+    document.getElementById('save-btn').addEventListener('click', () => {
+      let fontFamily = fontSelect.value;
+      if (fontFamily === '__custom__') {
+        fontFamily = customFont.value.trim();
+      }
+      window.preferencesAPI.savePreferences({
+        warnBeforeClosingTabs: warnClose.checked,
+        fontFamily,
+        theme: themeSelect.value,
+      }).then(() => {
+        window.preferencesAPI.closeWindow();
+      });
+    });
+
+    document.getElementById('cancel-btn').addEventListener('click', () => {
+      window.preferencesAPI.closeWindow();
+    });
+
+    document.getElementById('close-btn').addEventListener('click', () => {
+      window.preferencesAPI.closeWindow();
+    });
+  </script>
+</body>
+</html>

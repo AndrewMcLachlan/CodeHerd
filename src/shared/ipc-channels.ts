@@ -14,9 +14,13 @@ export const IPC = {
   SIDEBAR_STATE: 'sidebar:state',
   RECENTLY_CLOSED: 'recently-closed:save',
   MENU_ACTION: 'menu:action',
+  PREFERENCES_GET: 'preferences:get',
+  PREFERENCES_SAVE: 'preferences:save',
+  THEME_GET_RESOLVED: 'theme:get-resolved',
 
   // Main -> Renderer (send pattern)
   PTY_DATA: 'pty:data',
   PTY_EXIT: 'pty:exit',
   TAB_STATUS: 'tab:status',
+  THEME_CHANGED: 'theme:changed',
 } as const;

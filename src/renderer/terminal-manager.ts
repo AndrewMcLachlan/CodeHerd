@@ -1,7 +1,53 @@
-import { Terminal } from '@xterm/xterm';
+import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import type { TabId } from '../shared/types';
+import type { TabId, ResolvedTheme } from '../shared/types';
+
+const DARK_TERMINAL_THEME: ITheme = {
+  background: '#1e1e2e',
+  foreground: '#cdd6f4',
+  cursor: '#f5e0dc',
+  selectionBackground: '#585b7066',
+  black: '#45475a',
+  red: '#f38ba8',
+  green: '#a6e3a1',
+  yellow: '#f9e2af',
+  blue: '#89b4fa',
+  magenta: '#f5c2e7',
+  cyan: '#94e2d5',
+  white: '#bac2de',
+  brightBlack: '#585b70',
+  brightRed: '#f38ba8',
+  brightGreen: '#a6e3a1',
+  brightYellow: '#f9e2af',
+  brightBlue: '#89b4fa',
+  brightMagenta: '#f5c2e7',
+  brightCyan: '#94e2d5',
+  brightWhite: '#a6adc8',
+};
+
+const LIGHT_TERMINAL_THEME: ITheme = {
+  background: '#eff1f5',
+  foreground: '#4c4f69',
+  cursor: '#dc8a78',
+  selectionBackground: '#acb0be80',
+  black: '#5c5f77',
+  red: '#d20f39',
+  green: '#40a02b',
+  yellow: '#df8e1d',
+  blue: '#1e66f5',
+  magenta: '#ea76cb',
+  cyan: '#179299',
+  white: '#acb0be',
+  brightBlack: '#6c6f85',
+  brightRed: '#d20f39',
+  brightGreen: '#40a02b',
+  brightYellow: '#df8e1d',
+  brightBlue: '#1e66f5',
+  brightMagenta: '#ea76cb',
+  brightCyan: '#179299',
+  brightWhite: '#bcc0cc',
+};
 
 interface TerminalEntry {
   terminal: Terminal;
@@ -15,6 +61,8 @@ export class TerminalManager {
   private terminals = new Map<TabId, TerminalEntry>();
   private container: HTMLElement;
   private onTitleChangeCallback: ((tabId: TabId, title: string) => void) | null = null;
+  private fontFamily = "'Cascadia Code', 'Fira Code', Consolas, monospace";
+  private currentTheme: ResolvedTheme = 'dark';
 
   constructor() {
     this.container = document.getElementById('terminal-container')!;
@@ -37,29 +85,8 @@ export class TerminalManager {
     const terminal = new Terminal({
       cursorBlink: true,
       fontSize: 14,
-      fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace",
-      theme: {
-        background: '#1e1e2e',
-        foreground: '#cdd6f4',
-        cursor: '#f5e0dc',
-        selectionBackground: '#585b7066',
-        black: '#45475a',
-        red: '#f38ba8',
-        green: '#a6e3a1',
-        yellow: '#f9e2af',
-        blue: '#89b4fa',
-        magenta: '#f5c2e7',
-        cyan: '#94e2d5',
-        white: '#bac2de',
-        brightBlack: '#585b70',
-        brightRed: '#f38ba8',
-        brightGreen: '#a6e3a1',
-        brightYellow: '#f9e2af',
-        brightBlue: '#89b4fa',
-        brightMagenta: '#f5c2e7',
-        brightCyan: '#94e2d5',
-        brightWhite: '#a6adc8',
-      },
+      fontFamily: this.fontFamily,
+      theme: this.currentTheme === 'light' ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME,
     });
 
     const fitAddon = new FitAddon();
@@ -75,9 +102,9 @@ export class TerminalManager {
       // Let F11 (fullscreen toggle) pass through to Electron menu
       if (e.key === 'F11') return false;
 
-      // Let Ctrl/Cmd+T, Ctrl/Cmd+W, Ctrl/Cmd+B pass through to menu/renderer
+      // Let Ctrl/Cmd+T, Ctrl/Cmd+W, Ctrl/Cmd+B, Ctrl/Cmd+, pass through to menu/renderer
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-        if (e.key === 't' || e.key === 'w' || e.key === 'b') {
+        if (e.key === 't' || e.key === 'w' || e.key === 'b' || e.key === ',') {
           return false;
         }
       }
@@ -95,6 +122,7 @@ export class TerminalManager {
 
       // Ctrl+V: paste from clipboard
       if (e.ctrlKey && e.key === 'v') {
+        e.preventDefault(); // Prevent native paste (would double-paste)
         window.codeherd.clipboardRead().then((text) => {
           if (text) {
             window.codeherd.inputToTab(ref.tabId, text);
@@ -110,16 +138,6 @@ export class TerminalManager {
           window.codeherd.clipboardWrite(selection);
           terminal.clearSelection();
         }
-        return false;
-      }
-
-      // Ctrl+Shift+V: always paste
-      if (e.ctrlKey && e.shiftKey && e.key === 'V') {
-        window.codeherd.clipboardRead().then((text) => {
-          if (text) {
-            window.codeherd.inputToTab(ref.tabId, text);
-          }
-        });
         return false;
       }
 
@@ -203,5 +221,21 @@ export class TerminalManager {
 
   has(tabId: TabId): boolean {
     return this.terminals.has(tabId);
+  }
+
+  setFontFamily(font: string): void {
+    const DEFAULT_FONT = "'Cascadia Code', 'Fira Code', Consolas, monospace";
+    this.fontFamily = font ? `'${font}', ${DEFAULT_FONT}` : DEFAULT_FONT;
+    for (const entry of this.terminals.values()) {
+      entry.terminal.options.fontFamily = this.fontFamily;
+    }
+  }
+
+  setTheme(theme: ResolvedTheme): void {
+    this.currentTheme = theme;
+    const xtermTheme = theme === 'light' ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME;
+    for (const entry of this.terminals.values()) {
+      entry.terminal.options.theme = xtermTheme;
+    }
   }
 }

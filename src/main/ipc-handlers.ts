@@ -1,11 +1,23 @@
-import { ipcMain, BrowserWindow, dialog, clipboard, app, shell } from 'electron';
+import { ipcMain, BrowserWindow, dialog, clipboard, app, shell, nativeTheme } from 'electron';
 import * as path from 'path';
 import { IPC } from '../shared/ipc-channels';
-import type { TabState, TabCreateRequest, RecentlyClosedTab } from '../shared/types';
+import type { TabState, TabCreateRequest, RecentlyClosedTab, Preferences, ThemePreference, ResolvedTheme } from '../shared/types';
 import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
 import { SessionTracker } from './session-tracker';
 import { getGitInfo } from './git-info';
+
+function resolveTheme(pref: ThemePreference): ResolvedTheme {
+  if (pref === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  return pref;
+}
+
+function getThemeColors(resolved: ResolvedTheme) {
+  if (resolved === 'light') {
+    return { bg: '#eff1f5', titleBar: '#dce0e8', symbolColor: '#4c4f69' };
+  }
+  return { bg: '#1e1e2e', titleBar: '#11111b', symbolColor: '#cdd6f4' };
+}
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -121,6 +133,7 @@ export function registerIpcHandlers(
       tab.lastActivityAt = Date.now();
       if (tab.status === 'resuming') {
         tab.status = 'running';
+        safeSend(IPC.TAB_STATUS, { tabId, status: 'running' });
       }
     }
   });
@@ -174,6 +187,16 @@ export function registerIpcHandlers(
     stateManager.save();
   });
 
+  ipcMain.handle(IPC.THEME_GET_RESOLVED, async () => {
+    const prefs = stateManager.getPreferences();
+    return resolveTheme(prefs.theme);
+  });
+
+  ipcMain.on('theme:get-resolved-sync', (event) => {
+    const prefs = stateManager.getPreferences();
+    event.returnValue = resolveTheme(prefs.theme);
+  });
+
   ipcMain.on('about:get-version', (event) => {
     event.returnValue = app.getVersion();
   });
@@ -183,6 +206,42 @@ export function registerIpcHandlers(
   });
 
   let aboutWin: BrowserWindow | null = null;
+  let prefsWin: BrowserWindow | null = null;
+
+  ipcMain.handle(IPC.PREFERENCES_GET, async () => {
+    return stateManager.getPreferences();
+  });
+
+  ipcMain.handle(IPC.PREFERENCES_SAVE, async (_event, prefs: Preferences) => {
+    const oldPrefs = stateManager.getPreferences();
+    stateManager.setPreferences(prefs);
+    stateManager.save();
+    safeSend('preferences:changed', prefs);
+
+    // Handle theme change
+    if (prefs.theme !== oldPrefs.theme) {
+      nativeTheme.themeSource = prefs.theme === 'system' ? 'system' : prefs.theme;
+      const resolved = resolveTheme(prefs.theme);
+      const colors = getThemeColors(resolved);
+      safeSend(IPC.THEME_CHANGED, resolved);
+
+      // Update titlebar overlay colors on Windows/Linux
+      const win = getMainWindow();
+      if (win && !win.isDestroyed() && process.platform !== 'darwin') {
+        win.setTitleBarOverlay({
+          color: colors.titleBar,
+          symbolColor: colors.symbolColor,
+        });
+      }
+    }
+  });
+
+  ipcMain.on('preferences:close', () => {
+    if (prefsWin && !prefsWin.isDestroyed()) {
+      prefsWin.destroy();
+      prefsWin = null;
+    }
+  });
 
   ipcMain.on('about:close', () => {
     if (aboutWin && !aboutWin.isDestroyed()) {
@@ -203,6 +262,7 @@ export function registerIpcHandlers(
           aboutWin.focus();
           break;
         }
+        const aboutColors = getThemeColors(resolveTheme(stateManager.getPreferences().theme));
         aboutWin = new BrowserWindow({
           width: 420,
           height: 240,
@@ -212,7 +272,7 @@ export function registerIpcHandlers(
           parent: win,
           modal: true,
           frame: false,
-          backgroundColor: '#1e1e2e',
+          backgroundColor: aboutColors.bg,
           webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
@@ -221,6 +281,32 @@ export function registerIpcHandlers(
         });
         aboutWin.on('closed', () => { aboutWin = null; });
         aboutWin.loadFile(path.join(__dirname, 'about.html'));
+        break;
+      }
+      case 'preferences': {
+        if (prefsWin && !prefsWin.isDestroyed()) {
+          prefsWin.focus();
+          break;
+        }
+        const prefsColors = getThemeColors(resolveTheme(stateManager.getPreferences().theme));
+        prefsWin = new BrowserWindow({
+          width: 480,
+          height: 380,
+          resizable: false,
+          minimizable: false,
+          maximizable: false,
+          parent: win,
+          modal: true,
+          frame: false,
+          backgroundColor: prefsColors.bg,
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            preload: path.join(__dirname, 'preferences-preload.js'),
+          },
+        });
+        prefsWin.on('closed', () => { prefsWin = null; });
+        prefsWin.loadFile(path.join(__dirname, 'preferences.html'));
         break;
       }
       case 'toggleDevTools':

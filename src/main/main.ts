@@ -1,16 +1,34 @@
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, nativeTheme } from 'electron';
 import * as path from 'path';
 import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { buildAppMenu } from './menu';
+import type { ThemePreference, ResolvedTheme } from '../shared/types';
+
+// In dev mode, use a separate user data directory so we can run alongside the installed app
+if (!app.isPackaged) {
+  app.setPath('userData', path.join(app.getPath('userData'), '-dev'));
+}
 
 let mainWindow: BrowserWindow | null = null;
 const ptyManager = new PtyManager();
 const stateManager = new StateManager();
 
-// Enforce single instance
-const gotTheLock = app.requestSingleInstanceLock();
+function resolveTheme(pref: ThemePreference): ResolvedTheme {
+  if (pref === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  return pref;
+}
+
+function getThemeColors(resolved: ResolvedTheme) {
+  if (resolved === 'light') {
+    return { bg: '#eff1f5', titleBar: '#dce0e8', symbolColor: '#4c4f69' };
+  }
+  return { bg: '#1e1e2e', titleBar: '#11111b', symbolColor: '#cdd6f4' };
+}
+
+// Enforce single instance (skip in dev to allow running alongside installed app)
+const gotTheLock = app.isPackaged ? app.requestSingleInstanceLock() : true;
 if (!gotTheLock) {
   app.quit();
 }
@@ -25,6 +43,12 @@ app.on('second-instance', () => {
 function createWindow(): void {
   const savedState = stateManager.getState();
   const bounds = savedState.windowBounds;
+  const prefs = stateManager.getPreferences();
+
+  // Configure nativeTheme based on preference
+  nativeTheme.themeSource = prefs.theme === 'system' ? 'system' : prefs.theme;
+  const resolved = resolveTheme(prefs.theme);
+  const colors = getThemeColors(resolved);
 
   const isMac = process.platform === 'darwin';
 
@@ -35,11 +59,11 @@ function createWindow(): void {
     height: bounds.height,
     title: 'CodeHerd',
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
-    backgroundColor: '#1e1e2e',
+    backgroundColor: colors.bg,
     titleBarStyle: 'hidden',
     ...(isMac
       ? { trafficLightPosition: { x: 10, y: 10 } }
-      : { titleBarOverlay: { color: '#11111b', symbolColor: '#cdd6f4', height: 36 } }),
+      : { titleBarOverlay: { color: colors.titleBar, symbolColor: colors.symbolColor, height: 36 } }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -95,6 +119,22 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // Listen for OS theme changes when preference is 'system'
+  nativeTheme.on('updated', () => {
+    const currentPrefs = stateManager.getPreferences();
+    if (currentPrefs.theme === 'system' && mainWindow && !mainWindow.isDestroyed()) {
+      const newResolved = resolveTheme('system');
+      const newColors = getThemeColors(newResolved);
+      mainWindow.webContents.send('theme:changed', newResolved);
+      if (process.platform !== 'darwin') {
+        mainWindow.setTitleBarOverlay({
+          color: newColors.titleBar,
+          symbolColor: newColors.symbolColor,
+        });
+      }
+    }
   });
 }
 

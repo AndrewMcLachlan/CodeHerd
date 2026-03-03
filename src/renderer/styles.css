@@ -17,6 +17,29 @@
   --tab-active: #1e1e2e;
   --tab-inactive: #11111b;
   --danger: #f38ba8;
+  --hover-overlay: var(--hover-overlay);
+  --hover-overlay-strong: var(--hover-overlay-strong);
+  --text-on-accent: var(--text-on-accent);
+  --git-clean: #a6e3a1;
+}
+
+[data-theme="light"] {
+  --bg-base: #eff1f5;
+  --bg-surface: #e6e9ef;
+  --bg-overlay: #ccd0da;
+  --text-primary: #4c4f69;
+  --text-secondary: #5c5f77;
+  --text-muted: #8c8fa1;
+  --accent: #1e66f5;
+  --accent-hover: #209fb5;
+  --border: #bcc0cc;
+  --tab-active: #eff1f5;
+  --tab-inactive: #dce0e8;
+  --danger: #d20f39;
+  --hover-overlay: rgba(0, 0, 0, 0.06);
+  --hover-overlay-strong: rgba(0, 0, 0, 0.08);
+  --text-on-accent: rgba(255, 255, 255, 0.85);
+  --git-clean: #40a02b;
 }
 
 html, body {
@@ -66,7 +89,7 @@ html, body {
 
 #app-menu-btn:hover,
 #app-menu-btn.active {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover-overlay);
 }
 
 #app-menu-icon {
@@ -129,7 +152,7 @@ html, body {
 }
 
 .app-menu-item:not(.disabled):hover .app-menu-detail {
-  color: rgba(30, 30, 46, 0.7);
+  color: var(--text-on-accent);
 }
 
 .app-menu-arrow {
@@ -254,7 +277,7 @@ html, body {
 }
 
 .tab-close:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--hover-overlay-strong);
   color: var(--text-primary);
 }
 
@@ -534,7 +557,7 @@ html, body {
 }
 
 .status-git-clean {
-  color: #a6e3a1;
+  color: var(--git-clean);
   margin-left: 4px;
 }
 
