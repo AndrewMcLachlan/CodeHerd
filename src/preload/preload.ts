@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.invoke(IPC.RECENTLY_CLOSED, items),
   menuAction: (action: string): Promise<void> =>
     ipcRenderer.invoke(IPC.MENU_ACTION, action),
+  openExternal: (url: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.SHELL_OPEN_EXTERNAL, url),
 
   // Event listeners (main -> renderer)
   onPtyData: (callback: (msg: PtyDataMessage) => void): (() => void) => {

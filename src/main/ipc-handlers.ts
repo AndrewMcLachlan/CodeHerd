@@ -197,6 +197,13 @@ export function registerIpcHandlers(
     event.returnValue = resolveTheme(prefs.theme);
   });
 
+  ipcMain.handle(IPC.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {
+    // Only allow http/https URLs
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url);
+    }
+  });
+
   ipcMain.on('about:get-version', (event) => {
     event.returnValue = app.getVersion();
   });

@@ -91,7 +91,9 @@ export class TerminalManager {
 
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
-    terminal.loadAddon(new WebLinksAddon());
+    terminal.loadAddon(new WebLinksAddon((_event, url) => {
+      window.codeherd.openExternal(url);
+    }));
 
     terminal.open(element);
 

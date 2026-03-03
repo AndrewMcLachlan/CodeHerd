@@ -17,6 +17,7 @@ export const IPC = {
   PREFERENCES_GET: 'preferences:get',
   PREFERENCES_SAVE: 'preferences:save',
   THEME_GET_RESOLVED: 'theme:get-resolved',
+  SHELL_OPEN_EXTERNAL: 'shell:open-external',
 
   // Main -> Renderer (send pattern)
   PTY_DATA: 'pty:data',

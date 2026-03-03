@@ -24,6 +24,7 @@ declare global {
       saveSidebarState: (sidebar: { width: number; collapsed: boolean }) => Promise<void>;
       saveRecentlyClosed: (items: { folder: string; sessionId: string; label: string; closedAt: number }[]) => Promise<void>;
       menuAction: (action: string) => Promise<void>;
+      openExternal: (url: string) => Promise<void>;
       onPtyData: (cb: (msg: PtyDataMessage) => void) => () => void;
       onPtyExit: (cb: (msg: { tabId: string; exitCode: number }) => void) => () => void;
       onTabStatus: (cb: (msg: { tabId: string; status: string }) => void) => () => void;
