@@ -111,6 +111,12 @@ export class TerminalManager {
         }
       }
 
+      // Ctrl+Enter: send LF (newline) instead of CR so Claude Code inserts a new line
+      if (e.ctrlKey && e.key === 'Enter') {
+        window.codeherd.inputToTab(ref.tabId, '\n');
+        return false;
+      }
+
       // Ctrl+C: copy if selection exists
       if (e.ctrlKey && e.key === 'c') {
         const selection = terminal.getSelection();
