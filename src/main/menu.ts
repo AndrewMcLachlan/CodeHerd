@@ -26,6 +26,14 @@ export function buildAppMenu(getMainWindow: () => BrowserWindow | null): Menu {
           },
         },
         { type: 'separator' },
+        {
+          label: 'Preferences',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => {
+            getMainWindow()?.webContents.send('menu:preferences');
+          },
+        },
+        { type: 'separator' },
         isMac
           ? { role: 'close' }
           : { label: 'Exit', accelerator: 'Alt+F4', role: 'quit' },

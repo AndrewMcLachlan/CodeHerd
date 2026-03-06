@@ -1,0 +1,26 @@
+/* Shared theme variables for modal windows (about, preferences) */
+:root {
+  --bg-base: #1e1e2e;
+  --bg-surface: #11111b;
+  --bg-overlay: #313244;
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --text-muted: #6c7086;
+  --accent: #89b4fa;
+  --accent-hover: #74c7ec;
+  --border: #45475a;
+  --danger: #f38ba8;
+}
+
+[data-theme="light"] {
+  --bg-base: #eff1f5;
+  --bg-surface: #dce0e8;
+  --bg-overlay: #ccd0da;
+  --text-primary: #4c4f69;
+  --text-secondary: #5c5f77;
+  --text-muted: #8c8fa1;
+  --accent: #1e66f5;
+  --accent-hover: #209fb5;
+  --border: #bcc0cc;
+  --danger: #d20f39;
+}

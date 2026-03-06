@@ -2,14 +2,15 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'">
   <title>About CodeHerd</title>
+  <link rel="stylesheet" href="themes.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'Segoe UI', -apple-system, sans-serif;
-      background: #1e1e2e;
-      color: #cdd6f4;
+      background: var(--bg-base);
+      color: var(--text-primary);
       height: 100vh;
       display: flex;
       flex-direction: column;
@@ -21,10 +22,10 @@
       align-items: center;
       justify-content: center;
       height: 32px;
-      background: #11111b;
+      background: var(--bg-surface);
       -webkit-app-region: drag;
       font-size: 12px;
-      color: #a6adc8;
+      color: var(--text-secondary);
       flex-shrink: 0;
       position: relative;
     }
@@ -36,7 +37,7 @@
       height: 32px;
       background: none;
       border: none;
-      color: #a6adc8;
+      color: var(--text-secondary);
       font-size: 24px;
       cursor: pointer;
       -webkit-app-region: no-drag;
@@ -44,7 +45,7 @@
       align-items: center;
       justify-content: center;
     }
-    #close-btn:hover { background: #f38ba8; color: #1e1e2e; }
+    #close-btn:hover { background: var(--danger); color: var(--bg-base); }
     #content {
       flex: 1;
       display: flex;
@@ -57,28 +58,28 @@
     #name-row { display: flex; align-items: center; gap: 10px; }
     #app-name { font-size: 22px; font-weight: 600; }
     #version {
-      background: #89b4fa;
-      color: #1e1e2e;
+      background: var(--accent);
+      color: var(--bg-base);
       font-size: 11px;
       font-weight: 700;
       padding: 2px 8px;
       border-radius: 10px;
     }
-    #description { font-size: 13px; color: #a6adc8; }
+    #description { font-size: 13px; color: var(--text-secondary); }
     #links { display: flex; gap: 12px; margin-top: 4px; }
     #links a {
-      color: #a6adc8;
+      color: var(--text-secondary);
       text-decoration: none;
       font-size: 13px;
       display: flex;
       align-items: center;
       gap: 4px;
     }
-    #links a:hover { color: #89b4fa; }
+    #links a:hover { color: var(--accent); }
     #footer {
       padding: 12px 32px;
       font-size: 11px;
-      color: #6c7086;
+      color: var(--text-muted);
       display: flex;
       flex-direction: column;
       gap: 2px;
@@ -108,6 +109,11 @@
     <span id="electron-info"></span>
   </div>
   <script>
+    // Apply theme before paint
+    if (window.aboutInfo?.getTheme) {
+      document.documentElement.dataset.theme = window.aboutInfo.getTheme();
+    }
+
     document.getElementById('version').textContent = window.aboutInfo?.version || '';
     const year = new Date().getFullYear();
     const yearStr = year > 2026 ? `2026-${year}` : '2026';

@@ -21,6 +21,15 @@ export interface RecentlyClosedTab {
   closedAt: number;
 }
 
+export type ThemePreference = 'light' | 'dark' | 'system';
+export type ResolvedTheme = 'light' | 'dark';
+
+export interface Preferences {
+  warnBeforeClosingTabs: boolean;
+  fontFamily: string;
+  theme: ThemePreference;
+}
+
 export interface AppState {
   version: 1;
   tabs: TabState[];
@@ -37,6 +46,7 @@ export interface AppState {
     collapsed: boolean;
   };
   recentlyClosed: RecentlyClosedTab[];
+  preferences: Preferences;
 }
 
 export interface ClaudeSession {

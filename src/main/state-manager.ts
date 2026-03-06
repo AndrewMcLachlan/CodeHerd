@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { STATE_DIR, STATE_FILE, DEFAULT_APP_STATE } from '../shared/constants';
-import type { AppState, TabState, TabId, RecentlyClosedTab } from '../shared/types';
+import { STATE_DIR, STATE_FILE, DEFAULT_APP_STATE, DEFAULT_PREFERENCES } from '../shared/constants';
+import type { AppState, TabState, TabId, RecentlyClosedTab, Preferences } from '../shared/types';
 
 export class StateManager {
   private state: AppState;
@@ -17,7 +17,12 @@ export class StateManager {
         const raw = fs.readFileSync(STATE_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed.version === 1) {
-          return parsed as AppState;
+          // Merge in defaults for any fields added after the state file was created
+          return {
+            ...DEFAULT_APP_STATE,
+            ...parsed,
+            preferences: { ...DEFAULT_PREFERENCES, ...parsed.preferences },
+          };
         }
       }
     } catch {
@@ -59,6 +64,14 @@ export class StateManager {
 
   setRecentlyClosed(items: RecentlyClosedTab[]): void {
     this.state.recentlyClosed = items;
+  }
+
+  getPreferences(): Preferences {
+    return this.state.preferences ?? { warnBeforeClosingTabs: true, fontFamily: '' };
+  }
+
+  setPreferences(prefs: Preferences): void {
+    this.state.preferences = prefs;
   }
 
   getRestoredTabs(): TabState[] {

@@ -19,6 +19,12 @@ export const DEFAULT_SIDEBAR = {
   collapsed: true,
 };
 
+export const DEFAULT_PREFERENCES = {
+  warnBeforeClosingTabs: true,
+  fontFamily: '',
+  theme: 'dark' as const,
+};
+
 export const DEFAULT_APP_STATE = {
   version: 1 as const,
   tabs: [],
@@ -26,4 +32,5 @@ export const DEFAULT_APP_STATE = {
   windowBounds: DEFAULT_WINDOW_BOUNDS,
   sidebar: DEFAULT_SIDEBAR,
   recentlyClosed: [],
+  preferences: DEFAULT_PREFERENCES,
 };

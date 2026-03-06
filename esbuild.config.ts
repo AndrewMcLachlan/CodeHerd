@@ -45,6 +45,18 @@ async function build() {
     sourcemap: true,
   });
 
+  // Preferences preload script
+  await esbuild.build({
+    entryPoints: ['src/preload/preferences-preload.ts'],
+    bundle: true,
+    platform: 'node',
+    target: 'node24',
+    outfile: path.join(outdir, 'preferences-preload.js'),
+    external: ['electron'],
+    format: 'cjs',
+    sourcemap: true,
+  });
+
   // Renderer bundle
   await esbuild.build({
     entryPoints: ['src/renderer/renderer.ts'],
@@ -60,6 +72,8 @@ async function build() {
   fs.copyFileSync('src/renderer/index.html', path.join(outdir, 'index.html'));
   fs.copyFileSync('src/renderer/styles.css', path.join(outdir, 'styles.css'));
   fs.copyFileSync('src/renderer/about.html', path.join(outdir, 'about.html'));
+  fs.copyFileSync('src/renderer/preferences.html', path.join(outdir, 'preferences.html'));
+  fs.copyFileSync('src/renderer/themes.css', path.join(outdir, 'themes.css'));
 
   // Copy app icons
   fs.copyFileSync(path.join('assets', 'icon.png'), path.join(outdir, 'icon.png'));

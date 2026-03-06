@@ -1,4 +1,4 @@
-import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo } from '../shared/types';
+import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo, Preferences } from '../shared/types';
 import { TerminalManager } from './terminal-manager';
 import { TabManager } from './tab-manager';
 import { Sidebar } from './sidebar';
@@ -24,12 +24,17 @@ declare global {
       saveSidebarState: (sidebar: { width: number; collapsed: boolean }) => Promise<void>;
       saveRecentlyClosed: (items: { folder: string; sessionId: string; label: string; closedAt: number }[]) => Promise<void>;
       menuAction: (action: string) => Promise<void>;
+      openExternal: (url: string) => Promise<void>;
       onPtyData: (cb: (msg: PtyDataMessage) => void) => () => void;
       onPtyExit: (cb: (msg: { tabId: string; exitCode: number }) => void) => () => void;
       onTabStatus: (cb: (msg: { tabId: string; status: string }) => void) => () => void;
       onMenuOpenFolder: (cb: () => void) => () => void;
       onMenuCloseTab: (cb: () => void) => () => void;
       onMenuToggleSidebar: (cb: () => void) => () => void;
+      onMenuPreferences: (cb: () => void) => () => void;
+      onPreferencesChanged: (cb: (prefs: Preferences) => void) => () => void;
+      onThemeChanged: (cb: (resolvedTheme: string) => void) => () => void;
+      getResolvedTheme: () => Promise<string>;
     };
   }
 }
@@ -131,6 +136,7 @@ async function init(): Promise<void> {
       { separator: true },
       { label: 'Developer Tools', shortcut: 'F12', action: () => window.codeherd.menuAction('toggleDevTools') },
       { separator: true },
+      { label: 'Preferences', shortcut: `${mod},`, action: () => window.codeherd.menuAction('preferences') },
       { label: 'About CodeHerd', action: () => window.codeherd.menuAction('about') },
       { separator: true },
       { label: 'Exit', shortcut: 'Alt+F4', action: () => window.codeherd.menuAction('quit') },
@@ -168,6 +174,10 @@ async function init(): Promise<void> {
     tabManager.markExited(msg.tabId, msg.exitCode);
   });
 
+  window.codeherd.onTabStatus((msg) => {
+    tabManager.updateStatus(msg.tabId, msg.status as TabState['status']);
+  });
+
   // New tab button
   document.getElementById('new-tab-btn')!.addEventListener('click', () => {
     tabManager.openNewTab();
@@ -192,6 +202,33 @@ async function init(): Promise<void> {
 
   window.codeherd.onMenuToggleSidebar(() => {
     sidebar.toggle();
+  });
+
+  window.codeherd.onMenuPreferences(() => {
+    window.codeherd.menuAction('preferences');
+  });
+
+  // Apply preferences
+  const prefs = state.preferences ?? { warnBeforeClosingTabs: true, fontFamily: '', theme: 'dark' as const };
+  if (prefs.fontFamily) {
+    terminalManager.setFontFamily(prefs.fontFamily);
+  }
+  tabManager.setWarnBeforeClose(prefs.warnBeforeClosingTabs);
+
+  // Apply initial theme
+  const resolvedTheme = await window.codeherd.getResolvedTheme();
+  document.documentElement.dataset.theme = resolvedTheme;
+  terminalManager.setTheme(resolvedTheme as 'light' | 'dark');
+
+  window.codeherd.onPreferencesChanged((newPrefs) => {
+    terminalManager.setFontFamily(newPrefs.fontFamily);
+    tabManager.setWarnBeforeClose(newPrefs.warnBeforeClosingTabs);
+  });
+
+  // Listen for theme changes (from preferences save or OS theme change)
+  window.codeherd.onThemeChanged((newTheme) => {
+    document.documentElement.dataset.theme = newTheme;
+    terminalManager.setTheme(newTheme as 'light' | 'dark');
   });
 
   // Keyboard shortcuts (fallback for when menu accelerators don't fire)
