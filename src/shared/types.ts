@@ -11,7 +11,7 @@ export interface TabState {
   isActive: boolean;
   createdAt: number;
   lastActivityAt: number;
-  status: 'running' | 'stopped' | 'resuming';
+  status: 'running' | 'stopped' | 'resuming' | 'waiting' | 'attention';
 }
 
 export interface RecentlyClosedTab {

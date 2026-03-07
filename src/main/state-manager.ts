@@ -75,6 +75,6 @@ export class StateManager {
   }
 
   getRestoredTabs(): TabState[] {
-    return this.state.tabs.filter(t => t.status === 'running' || t.status === 'resuming');
+    return this.state.tabs.filter(t => t.status !== 'stopped');
   }
 }

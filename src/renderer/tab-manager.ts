@@ -126,6 +126,11 @@ export class TabManager {
     if (tab) {
       tab.status = status;
     }
+    const tabEl = this.tabBar.querySelector(`[data-tab-id="${tabId}"]`);
+    if (tabEl) {
+      tabEl.classList.toggle('waiting', status === 'waiting');
+      tabEl.classList.toggle('attention', status === 'attention');
+    }
   }
 
   markExited(tabId: TabId, exitCode: number): void {
@@ -136,6 +141,7 @@ export class TabManager {
     const tabEl = this.tabBar.querySelector(`[data-tab-id="${tabId}"]`);
     if (tabEl) {
       tabEl.classList.add('exited');
+      tabEl.classList.remove('waiting', 'attention');
     }
   }
 
