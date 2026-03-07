@@ -107,6 +107,10 @@ function createWindow(): void {
       // Hard safety net: force exit after 5 seconds no matter what
       setTimeout(() => process.exit(0), 5000);
 
+      // Persist current tab state before killing PTYs, so tabs can be restored on restart.
+      // (gracefulKill sets status to 'stopped', which would prevent restoration.)
+      stateManager.save();
+
       // Graceful shutdown, then exit (no async/await - use promise chain)
       ptyManager.gracefulKillAll()
         .catch(() => {})
@@ -141,7 +145,7 @@ function createWindow(): void {
 let isQuitting = false;
 
 app.whenReady().then(() => {
-  registerIpcHandlers(ptyManager, stateManager, () => mainWindow);
+  registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting);
   Menu.setApplicationMenu(buildAppMenu(() => mainWindow));
   createWindow();
 });

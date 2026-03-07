@@ -480,6 +480,28 @@ html, body {
   font-style: italic;
 }
 
+.tab.waiting .tab-label::before,
+.tab.attention .tab-label::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.tab.attention .tab-label::before {
+  background: #fab387;
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 /* Status bar */
 #status-bar {
   display: flex;

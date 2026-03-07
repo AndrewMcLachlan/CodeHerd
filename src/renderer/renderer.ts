@@ -255,7 +255,7 @@ async function init(): Promise<void> {
   });
 
   // Restore tabs from previous session
-  const tabsToRestore = state.tabs.filter(t => t.status === 'running' || t.status === 'resuming');
+  const tabsToRestore = state.tabs.filter(t => t.status !== 'stopped');
 
   if (tabsToRestore.length > 0) {
     for (const savedTab of tabsToRestore) {

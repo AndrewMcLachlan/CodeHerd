@@ -1,6 +1,6 @@
 {
   "name": "codeherd",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Manage multiple Claude Code CLI instances in tabs with session persistence",
   "author": "Andrew McLachlan",
   "license": "MIT",

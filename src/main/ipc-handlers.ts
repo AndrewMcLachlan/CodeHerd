@@ -23,6 +23,7 @@ export function registerIpcHandlers(
   ptyManager: PtyManager,
   stateManager: StateManager,
   getMainWindow: () => BrowserWindow | null,
+  isQuitting: () => boolean,
 ): void {
   const tabs = new Map<string, TabState>();
   const sessionTracker = new SessionTracker();
@@ -70,7 +71,9 @@ export function registerIpcHandlers(
             ptyManager.onExit(tabId, (code) => {
               safeSend(IPC.PTY_EXIT, { tabId, exitCode: code });
               tab.status = 'stopped';
-              saveTabState();
+              if (!isQuitting()) {
+                saveTabState();
+              }
             });
             saveTabState();
           });
@@ -80,6 +83,29 @@ export function registerIpcHandlers(
           resumeCheckDone = true;
         }
       }
+      // Detect Claude Code's state via OSC terminal title and prompt patterns
+      // Title is "✳ Claude Code" when idle/waiting, spinner chars (⠐⠂ etc.) when busy
+      // "Esc to cancel" footer appears on all approval/decision prompts
+      const tab = tabs.get(tabId);
+      if (tab && tab.status !== 'stopped') {
+        let newStatus: TabState['status'] | null = null;
+
+        // "Esc to cancel" footer appears on all approval/decision prompts
+        if (data.includes('Esc to cancel')) {
+          newStatus = 'attention';
+        }
+        // OSC title: ✳ = idle, spinner = busy
+        const oscMatch = data.match(/\x1b\]0;(.+?)\x07/);
+        if (oscMatch && newStatus !== 'attention') {
+          newStatus = oscMatch[1].startsWith('✳') ? 'waiting' : 'running';
+        }
+
+        if (newStatus && tab.status !== newStatus) {
+          tab.status = newStatus;
+          safeSend(IPC.TAB_STATUS, { tabId, status: newStatus });
+        }
+      }
+
       safeSend(IPC.PTY_DATA, { tabId, data });
     });
 
@@ -90,7 +116,10 @@ export function registerIpcHandlers(
       const tab = tabs.get(tabId);
       if (tab) {
         tab.status = 'stopped';
-        saveTabState();
+        // Don't save 'stopped' state during shutdown — we want tabs to restore on restart
+        if (!isQuitting()) {
+          saveTabState();
+        }
       }
     });
 
@@ -134,6 +163,13 @@ export function registerIpcHandlers(
       if (tab.status === 'resuming') {
         tab.status = 'running';
         safeSend(IPC.TAB_STATUS, { tabId, status: 'running' });
+      } else if (tab.status === 'attention') {
+        // Ignore arrow keys / escape sequences (cursor navigation in selection prompts)
+        const isNavKey = /^\x1b\[/.test(data) || data === '\x1b';
+        if (!isNavKey) {
+          tab.status = 'waiting';
+          safeSend(IPC.TAB_STATUS, { tabId, status: 'waiting' });
+        }
       }
     }
   });
