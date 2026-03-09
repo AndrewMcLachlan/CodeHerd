@@ -32,11 +32,11 @@
     "@electron-forge/maker-dmg": "^7.11.1",
     "@electron-forge/maker-deb": "^7.11.1",
     "@electron/rebuild": "^4.0.0",
-    "electron": "^40.6.1",
+    "electron": "^40.8.0",
     "esbuild": "^0.27.3",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "@types/node": "^25.3.3",
+    "@types/node": "^25.4.0",
     "@types/uuid": "^11.0.0"
   }
 }
