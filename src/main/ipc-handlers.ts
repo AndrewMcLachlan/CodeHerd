@@ -46,48 +46,12 @@ export function registerIpcHandlers(
     const tabId = request.tabId;
     const { sessionId } = ptyManager.spawn(tabId, request.folder, request.resumeSessionId, request.cols, request.rows);
 
-    // Watch early output for resume failure, fall back to fresh session
-    let earlyOutput = '';
-    let resumeCheckDone = false;
-    let respawning = false;
-
     ptyManager.onData(tabId, (data) => {
-      // Check first ~2KB of output for resume failure
-      if (!resumeCheckDone && request.resumeSessionId) {
-        earlyOutput += data;
-        if (earlyOutput.includes('No conversation found with session ID')) {
-          resumeCheckDone = true;
-          respawning = true;
-          // Gracefully shut down the failed process, then respawn fresh
-          ptyManager.gracefulKill(tabId).then(() => {
-            const fresh = ptyManager.spawn(tabId, request.folder, undefined, request.cols, request.rows);
-            tab.sessionId = fresh.sessionId;
-            tab.status = 'running';
-            respawning = false;
-            // Re-wire data and exit handlers on the new process
-            ptyManager.onData(tabId, (d) => {
-              safeSend(IPC.PTY_DATA, { tabId, data: d });
-            });
-            ptyManager.onExit(tabId, (code) => {
-              safeSend(IPC.PTY_EXIT, { tabId, exitCode: code });
-              tab.status = 'stopped';
-              if (!isQuitting()) {
-                saveTabState();
-              }
-            });
-            saveTabState();
-          });
-          return;
-        }
-        if (earlyOutput.length > 2048) {
-          resumeCheckDone = true;
-        }
-      }
       // Detect Claude Code's state via OSC terminal title and prompt patterns
       // Title is "✳ Claude Code" when idle/waiting, spinner chars (⠐⠂ etc.) when busy
       // "Esc to cancel" footer appears on all approval/decision prompts
-      const tab = tabs.get(tabId);
-      if (tab && tab.status !== 'stopped') {
+      const currentTab = tabs.get(tabId);
+      if (currentTab && currentTab.status !== 'stopped') {
         let newStatus: TabState['status'] | null = null;
 
         // "Esc to cancel" footer appears on all approval/decision prompts
@@ -100,8 +64,8 @@ export function registerIpcHandlers(
           newStatus = oscMatch[1].startsWith('✳') ? 'waiting' : 'running';
         }
 
-        if (newStatus && tab.status !== newStatus) {
-          tab.status = newStatus;
+        if (newStatus && currentTab.status !== newStatus) {
+          currentTab.status = newStatus;
           safeSend(IPC.TAB_STATUS, { tabId, status: newStatus });
         }
       }
@@ -110,12 +74,10 @@ export function registerIpcHandlers(
     });
 
     ptyManager.onExit(tabId, (exitCode) => {
-      // Don't notify renderer if we're killing to respawn a fresh session
-      if (respawning) return;
       safeSend(IPC.PTY_EXIT, { tabId, exitCode });
-      const tab = tabs.get(tabId);
-      if (tab) {
-        tab.status = 'stopped';
+      const currentTab = tabs.get(tabId);
+      if (currentTab) {
+        currentTab.status = 'stopped';
         // Don't save 'stopped' state during shutdown — we want tabs to restore on restart
         if (!isQuitting()) {
           saveTabState();
