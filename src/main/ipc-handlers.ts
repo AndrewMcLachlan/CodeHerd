@@ -58,10 +58,10 @@ export function registerIpcHandlers(
         if (data.includes('Esc to cancel')) {
           newStatus = 'attention';
         }
-        // OSC title: ✳ = idle, spinner = busy
+        // OSC title: braille spinner (⠐⠂ etc.) = busy, anything else = idle
         const oscMatch = data.match(/\x1b\]0;(.+?)\x07/);
         if (oscMatch && newStatus !== 'attention') {
-          newStatus = oscMatch[1].startsWith('✳') ? 'waiting' : 'running';
+          newStatus = /^[\u2800-\u28FF]/.test(oscMatch[1]) ? 'running' : 'waiting';
         }
 
         if (newStatus && currentTab.status !== newStatus) {
