@@ -93,6 +93,11 @@ async function init(): Promise<void> {
     saveRecent();
   });
 
+  tabManager.setOnTabReorder(() => {
+    const tabIds = tabManager.getAllTabs().map(t => t.id);
+    window.codeherd.reorderTabs(tabIds);
+  });
+
   tabManager.setOnAllTabsClosed(() => {
     sidebar.clear();
     statusBar.update(null, null);

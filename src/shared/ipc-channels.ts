@@ -5,6 +5,7 @@ export const IPC = {
   TAB_RESIZE: 'tab:resize',
   TAB_INPUT: 'tab:input',
   TAB_GET_ALL: 'tab:get-all',
+  TAB_REORDER: 'tab:reorder',
   SESSION_LIST: 'session:list',
   FOLDER_PICK: 'folder:pick',
   STATE_GET: 'state:get',

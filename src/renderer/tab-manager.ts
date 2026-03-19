@@ -9,11 +9,14 @@ export class TabManager {
   private onTabSwitch: ((tab: TabState) => void) | null = null;
   private onTabClose: ((tab: TabState) => void) | null = null;
   private onAllTabsClosed: (() => void) | null = null;
+  private onTabReorder: (() => void) | null = null;
   private warnBeforeClose = true;
+  private dragState: { tabId: TabId; el: HTMLElement; ghost: HTMLElement; startX: number } | null = null;
 
   constructor(terminalManager: TerminalManager) {
     this.tabBar = document.getElementById('tab-bar')!;
     this.terminalManager = terminalManager;
+    this.initDragListeners();
   }
 
   setOnTabSwitch(callback: (tab: TabState) => void): void {
@@ -26,6 +29,10 @@ export class TabManager {
 
   setOnAllTabsClosed(callback: () => void): void {
     this.onAllTabsClosed = callback;
+  }
+
+  setOnTabReorder(callback: () => void): void {
+    this.onTabReorder = callback;
   }
 
   setWarnBeforeClose(warn: boolean): void {
@@ -128,6 +135,7 @@ export class TabManager {
     }
     const tabEl = this.tabBar.querySelector(`[data-tab-id="${tabId}"]`);
     if (tabEl) {
+      tabEl.classList.toggle('running', status === 'running');
       tabEl.classList.toggle('waiting', status === 'waiting');
       tabEl.classList.toggle('attention', status === 'attention');
     }
@@ -141,7 +149,7 @@ export class TabManager {
     const tabEl = this.tabBar.querySelector(`[data-tab-id="${tabId}"]`);
     if (tabEl) {
       tabEl.classList.add('exited');
-      tabEl.classList.remove('waiting', 'attention');
+      tabEl.classList.remove('running', 'waiting', 'attention');
     }
   }
 
@@ -154,6 +162,117 @@ export class TabManager {
 
   getAllTabs(): TabState[] {
     return Array.from(this.tabs.values());
+  }
+
+  private initDragListeners(): void {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!this.dragState) return;
+      e.preventDefault();
+
+      this.dragState.ghost.style.left = `${e.clientX}px`;
+      this.dragState.ghost.style.top = `${e.clientY}px`;
+
+      this.tabBar.querySelectorAll('.tab').forEach(t => t.classList.remove('drag-over-left', 'drag-over-right'));
+      const target = this.getTabAtX(e.clientX);
+      if (target && target.dataset.tabId !== this.dragState.tabId) {
+        const rect = target.getBoundingClientRect();
+        const isLeft = e.clientX < rect.left + rect.width / 2;
+        target.classList.add(isLeft ? 'drag-over-left' : 'drag-over-right');
+      }
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (!this.dragState) return;
+      const { tabId, el, ghost } = this.dragState;
+
+      ghost.remove();
+      el.classList.remove('dragging');
+      this.tabBar.classList.remove('dragging-active');
+      this.tabBar.querySelectorAll('.tab').forEach(t => t.classList.remove('drag-over-left', 'drag-over-right'));
+      document.body.style.cursor = '';
+
+      const target = this.getTabAtX(e.clientX);
+      if (target && target.dataset.tabId !== tabId) {
+        const draggedEl = this.tabBar.querySelector(`[data-tab-id="${tabId}"]`);
+        if (draggedEl) {
+          const rect = target.getBoundingClientRect();
+          if (e.clientX < rect.left + rect.width / 2) {
+            this.tabBar.insertBefore(draggedEl, target);
+          } else {
+            this.tabBar.insertBefore(draggedEl, target.nextSibling);
+          }
+          this.syncTabOrder();
+        }
+      } else if (!target) {
+        const draggedEl = this.tabBar.querySelector(`[data-tab-id="${tabId}"]`);
+        const lastTab = this.tabBar.querySelector('.tab:last-child');
+        if (draggedEl && lastTab !== draggedEl) {
+          this.tabBar.appendChild(draggedEl);
+          this.syncTabOrder();
+        }
+      }
+
+      this.dragState = null;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    this.tabBar.addEventListener('mousedown', (e) => {
+      const tabEl = (e.target as HTMLElement).closest('.tab') as HTMLElement | null;
+      if (!tabEl || (e.target as HTMLElement).classList.contains('tab-close')) return;
+
+      const tabId = tabEl.dataset.tabId as TabId;
+      const startX = e.clientX;
+      const startY = e.clientY;
+
+      const onDragStart = (me: MouseEvent) => {
+        if (Math.abs(me.clientX - startX) < 5 && Math.abs(me.clientY - startY) < 5) return;
+        document.removeEventListener('mousemove', onDragStart);
+        document.removeEventListener('mouseup', cancelDragStart);
+
+        const ghost = tabEl.cloneNode(true) as HTMLElement;
+        ghost.classList.add('tab-ghost');
+        ghost.style.left = `${me.clientX}px`;
+        ghost.style.top = `${me.clientY}px`;
+        document.body.appendChild(ghost);
+
+        tabEl.classList.add('dragging');
+        this.tabBar.classList.add('dragging-active');
+        document.body.style.cursor = 'grabbing';
+
+        this.dragState = { tabId, el: tabEl, ghost, startX };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      };
+
+      const cancelDragStart = () => {
+        document.removeEventListener('mousemove', onDragStart);
+        document.removeEventListener('mouseup', cancelDragStart);
+      };
+
+      document.addEventListener('mousemove', onDragStart);
+      document.addEventListener('mouseup', cancelDragStart);
+    });
+  }
+
+  private getTabAtX(clientX: number): HTMLElement | null {
+    const tabs = this.tabBar.querySelectorAll<HTMLElement>('.tab:not(.dragging)');
+    for (const tab of tabs) {
+      const rect = tab.getBoundingClientRect();
+      if (clientX >= rect.left && clientX <= rect.right) return tab;
+    }
+    return null;
+  }
+
+  private syncTabOrder(): void {
+    const ordered = new Map<TabId, TabState>();
+    this.tabBar.querySelectorAll<HTMLElement>('.tab').forEach(el => {
+      const id = el.dataset.tabId as TabId;
+      const state = this.tabs.get(id);
+      if (state) ordered.set(id, state);
+    });
+    this.tabs = ordered;
+    this.onTabReorder?.();
   }
 
   private renderTab(tab: TabState): void {

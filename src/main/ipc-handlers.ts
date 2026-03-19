@@ -151,6 +151,19 @@ export function registerIpcHandlers(
     saveTabState();
   });
 
+  ipcMain.handle(IPC.TAB_REORDER, async (_event, tabIds: string[]): Promise<void> => {
+    const reordered = new Map<string, TabState>();
+    for (const id of tabIds) {
+      const tab = tabs.get(id);
+      if (tab) reordered.set(id, tab);
+    }
+    tabs.clear();
+    for (const [id, tab] of reordered) {
+      tabs.set(id, tab);
+    }
+    saveTabState();
+  });
+
   ipcMain.handle(IPC.TAB_RESIZE, async (_event, { tabId, cols, rows }: { tabId: string; cols: number; rows: number }): Promise<void> => {
     ptyManager.resize(tabId, cols, rows);
   });
@@ -261,14 +274,12 @@ export function registerIpcHandlers(
     stateManager.save();
     safeSend('preferences:changed', prefs);
 
-    // Handle theme change
     if (prefs.theme !== oldPrefs.theme) {
       nativeTheme.themeSource = prefs.theme === 'system' ? 'system' : prefs.theme;
       const resolved = resolveTheme(prefs.theme);
       const colors = getThemeColors(resolved);
       safeSend(IPC.THEME_CHANGED, resolved);
 
-      // Update titlebar overlay colors on Windows/Linux
       const win = getMainWindow();
       if (win && !win.isDestroyed() && process.platform !== 'darwin') {
         win.setTitleBarOverlay({
