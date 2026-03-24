@@ -87,7 +87,7 @@ export class PtyManager {
     }
   }
 
-  /** Graceful shutdown: Ctrl+C to interrupt, /exit to quit, tree-kill as fallback */
+  /** Graceful shutdown: double Ctrl+C to quit, tree-kill as fallback */
   gracefulKill(tabId: TabId): Promise<void> {
     const entry = this.ptys.get(tabId);
     if (!entry) return Promise.resolve();
@@ -107,17 +107,10 @@ export class PtyManager {
       // Listen for process exit
       entry.process.onExit(() => done());
 
-      // Send Ctrl+C to interrupt any running operation, then /exit
+      // Double Ctrl+C in quick succession signals Claude Code to quit
       try {
-        entry.process.write('\x03'); // Ctrl+C
-        setTimeout(() => {
-          if (resolved) return;
-          try {
-            entry.process.write('/exit\r');
-          } catch {
-            // already dead
-          }
-        }, 200);
+        entry.process.write('\x03');
+        entry.process.write('\x03');
       } catch {
         // Process may already be dead
         done();
