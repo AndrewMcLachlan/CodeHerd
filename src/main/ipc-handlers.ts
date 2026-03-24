@@ -46,62 +46,26 @@ export function registerIpcHandlers(
     const tabId = request.tabId;
     const { sessionId } = ptyManager.spawn(tabId, request.folder, request.resumeSessionId, request.cols, request.rows);
 
-    // Watch early output for resume failure, fall back to fresh session
-    let earlyOutput = '';
-    let resumeCheckDone = false;
-    let respawning = false;
-
     ptyManager.onData(tabId, (data) => {
-      // Check first ~2KB of output for resume failure
-      if (!resumeCheckDone && request.resumeSessionId) {
-        earlyOutput += data;
-        if (earlyOutput.includes('No conversation found with session ID')) {
-          resumeCheckDone = true;
-          respawning = true;
-          // Gracefully shut down the failed process, then respawn fresh
-          ptyManager.gracefulKill(tabId).then(() => {
-            const fresh = ptyManager.spawn(tabId, request.folder, undefined, request.cols, request.rows);
-            tab.sessionId = fresh.sessionId;
-            tab.status = 'running';
-            respawning = false;
-            // Re-wire data and exit handlers on the new process
-            ptyManager.onData(tabId, (d) => {
-              safeSend(IPC.PTY_DATA, { tabId, data: d });
-            });
-            ptyManager.onExit(tabId, (code) => {
-              safeSend(IPC.PTY_EXIT, { tabId, exitCode: code });
-              tab.status = 'stopped';
-              if (!isQuitting()) {
-                saveTabState();
-              }
-            });
-            saveTabState();
-          });
-          return;
-        }
-        if (earlyOutput.length > 2048) {
-          resumeCheckDone = true;
-        }
-      }
       // Detect Claude Code's state via OSC terminal title and prompt patterns
       // Title is "✳ Claude Code" when idle/waiting, spinner chars (⠐⠂ etc.) when busy
       // "Esc to cancel" footer appears on all approval/decision prompts
-      const tab = tabs.get(tabId);
-      if (tab && tab.status !== 'stopped') {
+      const currentTab = tabs.get(tabId);
+      if (currentTab && currentTab.status !== 'stopped') {
         let newStatus: TabState['status'] | null = null;
 
         // "Esc to cancel" footer appears on all approval/decision prompts
         if (data.includes('Esc to cancel')) {
           newStatus = 'attention';
         }
-        // OSC title: ✳ = idle, spinner = busy
+        // OSC title: braille spinner (⠐⠂ etc.) = busy, anything else = idle
         const oscMatch = data.match(/\x1b\]0;(.+?)\x07/);
         if (oscMatch && newStatus !== 'attention') {
-          newStatus = oscMatch[1].startsWith('✳') ? 'waiting' : 'running';
+          newStatus = /^[\u2800-\u28FF]/.test(oscMatch[1]) ? 'running' : 'waiting';
         }
 
-        if (newStatus && tab.status !== newStatus) {
-          tab.status = newStatus;
+        if (newStatus && currentTab.status !== newStatus) {
+          currentTab.status = newStatus;
           safeSend(IPC.TAB_STATUS, { tabId, status: newStatus });
         }
       }
@@ -110,12 +74,10 @@ export function registerIpcHandlers(
     });
 
     ptyManager.onExit(tabId, (exitCode) => {
-      // Don't notify renderer if we're killing to respawn a fresh session
-      if (respawning) return;
       safeSend(IPC.PTY_EXIT, { tabId, exitCode });
-      const tab = tabs.get(tabId);
-      if (tab) {
-        tab.status = 'stopped';
+      const currentTab = tabs.get(tabId);
+      if (currentTab) {
+        currentTab.status = 'stopped';
         // Don't save 'stopped' state during shutdown — we want tabs to restore on restart
         if (!isQuitting()) {
           saveTabState();
@@ -148,6 +110,19 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.TAB_CLOSE, async (_event, { tabId }: { tabId: string }): Promise<void> => {
     await ptyManager.gracefulKill(tabId);
     tabs.delete(tabId);
+    saveTabState();
+  });
+
+  ipcMain.handle(IPC.TAB_REORDER, async (_event, tabIds: string[]): Promise<void> => {
+    const reordered = new Map<string, TabState>();
+    for (const id of tabIds) {
+      const tab = tabs.get(id);
+      if (tab) reordered.set(id, tab);
+    }
+    tabs.clear();
+    for (const [id, tab] of reordered) {
+      tabs.set(id, tab);
+    }
     saveTabState();
   });
 
@@ -261,14 +236,12 @@ export function registerIpcHandlers(
     stateManager.save();
     safeSend('preferences:changed', prefs);
 
-    // Handle theme change
     if (prefs.theme !== oldPrefs.theme) {
       nativeTheme.themeSource = prefs.theme === 'system' ? 'system' : prefs.theme;
       const resolved = resolveTheme(prefs.theme);
       const colors = getThemeColors(resolved);
       safeSend(IPC.THEME_CHANGED, resolved);
 
-      // Update titlebar overlay colors on Windows/Linux
       const win = getMainWindow();
       if (win && !win.isDestroyed() && process.platform !== 'darwin') {
         win.setTitleBarOverlay({

@@ -11,6 +11,7 @@
   --text-primary: #cdd6f4;
   --text-secondary: #a6adc8;
   --text-muted: #6c7086;
+  --orange: #cb7c5b;
   --accent: #89b4fa;
   --accent-hover: #74c7ec;
   --border: #45475a;
@@ -219,6 +220,41 @@ html, body {
 
 .tab:last-child::after {
   display: none;
+}
+
+.tab.dragging {
+  opacity: 0.4;
+}
+
+.tab-ghost {
+  position: fixed;
+  opacity: 0.9;
+  z-index: 9999;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+#tab-bar.dragging-active .tab > * {
+  pointer-events: none;
+}
+
+.tab.drag-over-left::before,
+.tab.drag-over-right::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+  z-index: 2;
+}
+
+.tab.drag-over-left::before {
+  left: -1px;
+}
+
+.tab.drag-over-right::before {
+  right: -1px;
 }
 
 .tab:hover {
@@ -480,20 +516,42 @@ html, body {
   font-style: italic;
 }
 
-.tab.waiting .tab-label::before,
-.tab.attention .tab-label::before {
+/* Fixed-width indicator space on all tabs to prevent layout shift */
+.tab .tab-label::before {
   content: '';
   display: inline-block;
+  width: 13px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+/* Running: sun icon ✳ */
+.tab.running .tab-label::before {
+  content: '✳';
+  font-size: 11px;
+  color: var(--orange);
+  margin-right: 6px;
+}
+
+/* Waiting: blue dot */
+.tab.waiting .tab-label::before {
+  content: '';
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--accent);
   margin-right: 6px;
-  vertical-align: middle;
 }
 
+/* Attention: pulsing orange dot */
 .tab.attention .tab-label::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   background: #fab387;
+  margin-right: 6px;
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
 

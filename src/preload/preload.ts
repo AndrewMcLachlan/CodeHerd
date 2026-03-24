@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.invoke(IPC.TAB_INPUT, { tabId, data }),
   getAllTabs: (): Promise<TabState[]> =>
     ipcRenderer.invoke(IPC.TAB_GET_ALL),
+  reorderTabs: (tabIds: string[]): Promise<void> =>
+    ipcRenderer.invoke(IPC.TAB_REORDER, tabIds),
   listSessions: (folder: string): Promise<ClaudeSession[]> =>
     ipcRenderer.invoke(IPC.SESSION_LIST, { folder }),
   pickFolder: (): Promise<string | null> =>
