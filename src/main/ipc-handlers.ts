@@ -1,11 +1,13 @@
 import { ipcMain, BrowserWindow, dialog, clipboard, app, shell, nativeTheme } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import { IPC } from '../shared/ipc-channels';
 import type { TabState, TabCreateRequest, RecentlyClosedTab, Preferences, ThemePreference, ResolvedTheme } from '../shared/types';
 import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
 import { SessionTracker } from './session-tracker';
 import { getGitInfo } from './git-info';
+import { detectStatus } from './status-detection';
 
 function resolveTheme(pref: ThemePreference): ResolvedTheme {
   if (pref === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
@@ -46,25 +48,22 @@ export function registerIpcHandlers(
     const tabId = request.tabId;
     const { sessionId } = ptyManager.spawn(tabId, request.folder, request.resumeSessionId, request.cols, request.rows);
 
+    const logPath = path.join(app.getPath('userData'), `pty-debug-${tabId}.log`);
+    const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+
     ptyManager.onData(tabId, (data) => {
-      // Detect Claude Code's state via OSC terminal title and prompt patterns
-      // Title is "✳ Claude Code" when idle/waiting, spinner chars (⠐⠂ etc.) when busy
-      // "Esc to cancel" footer appears on all approval/decision prompts
+      // Log raw data with control codes visible
+      const escaped = data.replace(/[\x00-\x1f\x7f]/g, (ch) => {
+        const code = ch.charCodeAt(0);
+        const names: Record<number, string> = { 3: 'ETX', 4: 'EOT', 7: 'BEL', 8: 'BS', 9: 'TAB', 10: 'LF', 13: 'CR', 27: 'ESC' };
+        return `<${names[code] ?? `0x${code.toString(16).padStart(2, '0')}`}>`;
+      });
+      logStream.write(`[${new Date().toISOString()}] ${escaped}\n`);
+
       const currentTab = tabs.get(tabId);
       if (currentTab && currentTab.status !== 'stopped') {
-        let newStatus: TabState['status'] | null = null;
-
-        // "Esc to cancel" footer appears on all approval/decision prompts
-        if (data.includes('Esc to cancel')) {
-          newStatus = 'attention';
-        }
-        // OSC title: braille spinner (⠐⠂ etc.) = busy, anything else = idle
-        const oscMatch = data.match(/\x1b\]0;(.+?)\x07/);
-        if (oscMatch && newStatus !== 'attention') {
-          newStatus = /^[\u2800-\u28FF]/.test(oscMatch[1]) ? 'running' : 'waiting';
-        }
-
-        if (newStatus && currentTab.status !== newStatus) {
+        const newStatus = detectStatus(data, currentTab.status);
+        if (newStatus) {
           currentTab.status = newStatus;
           safeSend(IPC.TAB_STATUS, { tabId, status: newStatus });
         }

@@ -259,6 +259,17 @@ async function init(): Promise<void> {
     }
   });
 
+  // Styling mode: show dummy tabs for each status, no PTY or state interaction
+  const isStylingMode = new URLSearchParams(window.location.search).has('styling');
+
+  if (isStylingMode) {
+    const statuses: TabState['status'][] = ['running', 'waiting', 'attention', 'resuming', 'stopped'];
+    for (const status of statuses) {
+      tabManager.addStylingTab(status);
+    }
+    return;
+  }
+
   // Restore tabs from previous session
   const tabsToRestore = state.tabs.filter(t => t.status !== 'stopped');
 

@@ -117,13 +117,13 @@ export class PtyManager {
         return;
       }
 
-      // Force kill the entire process tree after 2 seconds
+      // Force kill the entire process tree after 5 seconds
       setTimeout(() => {
         if (!resolved) {
           this.forceKillTree(pid);
           done();
         }
-      }, 2000);
+      }, 5000);
     });
   }
 

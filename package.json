@@ -15,6 +15,7 @@
     "build": "tsx esbuild.config.ts",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
+    "dev:styling": "npm run build && electron . --styling",
     "rebuild": "electron-rebuild",
     "package": "electron-forge package",
     "make": "electron-forge make"
