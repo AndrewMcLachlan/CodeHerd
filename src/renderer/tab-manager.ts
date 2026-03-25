@@ -327,6 +327,32 @@ export class TabManager {
     }
   }
 
+  addStylingTab(status: TabState['status']): void {
+    const tabId = crypto.randomUUID();
+    const tab: TabState = {
+      id: tabId,
+      launchFolder: '/mock',
+      currentFolder: '/mock',
+      sessionId: 'mock',
+      label: status,
+      isActive: false,
+      createdAt: Date.now(),
+      lastActivityAt: Date.now(),
+      status,
+    };
+    this.tabs.set(tabId, tab);
+    this.renderTab(tab);
+    this.updateStatus(tabId, status);
+    if (status === 'stopped') {
+      this.markExited(tabId, 0);
+    }
+    // Make the first tab active
+    if (this.tabs.size === 1) {
+      this.switchTo(tabId);
+    }
+    this.hideEmptyState();
+  }
+
   async openNewTab(): Promise<void> {
     const folder = await window.codeherd.pickFolder();
     if (folder) {

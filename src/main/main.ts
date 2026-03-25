@@ -75,11 +75,16 @@ function createWindow(): void {
     mainWindow.maximize();
   }
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  if (isStylingMode) {
+    mainWindow.loadFile(path.join(__dirname, 'index.html'), { query: { styling: '1' } });
+  } else {
+    mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  }
 
   // Save window bounds on move/resize (debounced)
   let boundsTimer: ReturnType<typeof setTimeout> | null = null;
   const saveBounds = () => {
+    if (isStylingMode) return;
     if (boundsTimer) clearTimeout(boundsTimer);
     boundsTimer = setTimeout(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -143,6 +148,7 @@ function createWindow(): void {
 }
 
 let isQuitting = false;
+const isStylingMode = process.argv.includes('--styling');
 
 app.whenReady().then(() => {
   registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting);
