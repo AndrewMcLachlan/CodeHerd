@@ -63,8 +63,10 @@ export function buildAppMenu(getMainWindow: () => BrowserWindow | null): Menu {
         { role: 'zoomIn' },
         { role: 'zoomOut' },
         { role: 'resetZoom' },
-        { type: 'separator' },
-        { role: 'toggleDevTools' },
+        ...(!app.isPackaged ? [
+          { type: 'separator' } as Electron.MenuItemConstructorOptions,
+          { role: 'toggleDevTools' } as Electron.MenuItemConstructorOptions,
+        ] : []),
       ],
     },
     {

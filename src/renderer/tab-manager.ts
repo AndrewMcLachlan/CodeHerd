@@ -1,5 +1,6 @@
 import type { TabId, TabState } from '../shared/types';
 import { TerminalManager } from './terminal-manager';
+import { SessionPicker } from './session-picker';
 
 export class TabManager {
   private tabs = new Map<TabId, TabState>();
@@ -12,6 +13,7 @@ export class TabManager {
   private onTabReorder: (() => void) | null = null;
   private warnBeforeClose = true;
   private dragState: { tabId: TabId; el: HTMLElement; ghost: HTMLElement; startX: number } | null = null;
+  private sessionPicker = new SessionPicker();
 
   constructor(terminalManager: TerminalManager) {
     this.tabBar = document.getElementById('tab-bar')!;
@@ -279,6 +281,7 @@ export class TabManager {
     const el = document.createElement('div');
     el.className = 'tab';
     el.dataset.tabId = tab.id;
+    el.title = tab.launchFolder;
 
     const label = document.createElement('span');
     label.className = 'tab-label';
@@ -334,7 +337,7 @@ export class TabManager {
       launchFolder: '/mock',
       currentFolder: '/mock',
       sessionId: 'mock',
-      label: status,
+      label: status.charAt(0).toUpperCase() + status.substring(1),
       isActive: false,
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
@@ -355,8 +358,22 @@ export class TabManager {
 
   async openNewTab(): Promise<void> {
     const folder = await window.codeherd.pickFolder();
-    if (folder) {
+    if (!folder) return;
+
+    const sessions = await window.codeherd.listSessions(folder);
+    if (sessions.length === 0) {
+      await this.createTab(folder);
+      return;
+    }
+
+    const folderName = folder.replace(/\\/g, '/').split('/').pop() || folder;
+    const result = await this.sessionPicker.show(sessions, folderName);
+
+    if (result.action === 'resume' && result.sessionId) {
+      await this.createTab(folder, result.sessionId);
+    } else if (result.action === 'new') {
       await this.createTab(folder);
     }
+    // 'cancel' — do nothing
   }
 }

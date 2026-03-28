@@ -207,6 +207,10 @@ export function registerIpcHandlers(
     event.returnValue = resolveTheme(prefs.theme);
   });
 
+  ipcMain.on('app:is-packaged', (event) => {
+    event.returnValue = app.isPackaged;
+  });
+
   ipcMain.handle(IPC.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {
     // Only allow http/https URLs
     if (url.startsWith('http://') || url.startsWith('https://')) {
