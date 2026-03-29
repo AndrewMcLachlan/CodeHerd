@@ -43,7 +43,8 @@
   --git-clean: #40a02b;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   overflow: hidden;
   font-family: 'Segoe UI', -apple-system, sans-serif;
@@ -145,8 +146,8 @@ html, body {
 
 .app-menu-detail {
   width: 100%;
-  font-size: 11px;
-  color: var(--text-muted);
+  font-size: 13px;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -234,7 +235,7 @@ html, body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-#tab-bar.dragging-active .tab > * {
+#tab-bar.dragging-active .tab>* {
   pointer-events: none;
 }
 
@@ -268,7 +269,7 @@ html, body {
 }
 
 .tab.active::after,
-.tab.active + .tab::after {
+.tab:has(+.tab.active)::after {
   display: none;
 }
 
@@ -279,6 +280,8 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-muted);
+  line-height: 32px;
+  max-height: 32px;
 }
 
 .tab:hover .tab-label {
@@ -324,7 +327,7 @@ html, body {
   font-size: 24px;
   padding: 0 10px;
   cursor: pointer;
-  transition: color 0.15s; 
+  transition: color 0.15s;
   flex-shrink: 0;
   height: 32px;
   display: flex;
@@ -526,39 +529,158 @@ html, body {
   top: -1px;
 }
 
-/* Running: sun icon ✳ */
+/* Running: animated braille spinner (matches Claude Code's ⠂ ⠐ pattern) */
 .tab.running .tab-label::before {
+  content: '⠂';
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--orange);
+  margin-right: 2px;
+  animation: braille-spin 1s steps(1) infinite;
+}
+
+@keyframes braille-spin {
+  0% {
+    content: '⠂';
+  }
+
+  50% {
+    content: '⠐';
+  }
+}
+
+/* Waiting: orange sun */
+.tab.waiting .tab-label::before {
   content: '✳';
   font-size: 11px;
   font-weight: bold;
   color: var(--orange);
   margin-right: 2px;
-}
-
-/* Waiting: blue dot */
-.tab.waiting .tab-label::before {
-  content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  margin-right: 6px;
+  top: -2px;
 }
 
 /* Attention: pulsing orange dot */
 .tab.attention .tab-label::before {
-  content: '';
+  /*content: '●';*/
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #fab387;
+  background: var(--orange);
   margin-right: 6px;
   animation: pulse-dot 1.5s ease-in-out infinite;
+  color: var(--orange);
+  /*font-size: 13px;
+  top: -2px;*/
 }
 
 @keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Session picker modal */
+.session-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.session-picker {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  width: 420px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.session-picker-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  padding: 16px 16px 4px;
+}
+
+.session-picker-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  padding: 0 16px 12px;
+}
+
+.session-picker-list {
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  max-height: 300px;
+}
+
+.session-picker-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 8px 16px;
+  cursor: pointer;
+  gap: 12px;
+}
+
+.session-picker-item:hover {
+  background: var(--accent);
+  color: var(--bg-base);
+}
+
+.session-picker-prompt {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.session-picker-item:hover .session-picker-prompt {
+  color: var(--bg-base);
+}
+
+.session-picker-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.session-picker-item:hover .session-picker-time {
+  color: var(--bg-base);
+}
+
+.session-picker-new {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  padding: 12px 16px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.session-picker-new:hover {
+  background: var(--bg-overlay);
 }
 
 /* Status bar */
@@ -579,7 +701,8 @@ html, body {
   display: none;
 }
 
-#status-left, #status-right {
+#status-left,
+#status-right {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -611,7 +734,7 @@ html, body {
   display: none;
 }
 
-.status-item + .status-item:not(.hidden) {
+.status-item+.status-item:not(.hidden) {
   border-left: 1px solid var(--border);
 }
 
@@ -642,7 +765,8 @@ html, body {
   margin-left: 4px;
 }
 
-.status-git-ahead, .status-git-behind {
+.status-git-ahead,
+.status-git-behind {
   color: var(--text-muted);
   font-size: 11px;
   margin-left: 3px;

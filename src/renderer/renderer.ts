@@ -35,6 +35,7 @@ declare global {
       onPreferencesChanged: (cb: (prefs: Preferences) => void) => () => void;
       onThemeChanged: (cb: (resolvedTheme: string) => void) => () => void;
       getResolvedTheme: () => Promise<string>;
+      isDev: boolean;
     };
   }
 }
@@ -118,8 +119,7 @@ async function init(): Promise<void> {
       disabled: recentlyClosed.length === 0,
       submenu: recentlyClosed.length > 0
         ? recentlyClosed.map(recent => ({
-            label: recent.label,
-            detail: formatRecentDetail(recent.folder, recent.closedAt),
+            label: formatRecentDetail(recent.folder, recent.closedAt),
             action: () => {
               tabManager.createTab(recent.folder, recent.sessionId);
               const idx = recentlyClosed.indexOf(recent);
@@ -138,8 +138,10 @@ async function init(): Promise<void> {
       { label: 'Zoom In', shortcut: `${mod}+`, action: () => window.codeherd.menuAction('zoomIn') },
       { label: 'Zoom Out', shortcut: `${mod}-`, action: () => window.codeherd.menuAction('zoomOut') },
       { label: 'Reset Zoom', shortcut: `${mod}0`, action: () => window.codeherd.menuAction('zoomReset') },
-      { separator: true },
-      { label: 'Developer Tools', shortcut: 'F12', action: () => window.codeherd.menuAction('toggleDevTools') },
+      ...(window.codeherd.isDev ? [
+        { separator: true } as MenuItem,
+        { label: 'Developer Tools', shortcut: 'F12', action: () => window.codeherd.menuAction('toggleDevTools') } as MenuItem,
+      ] : []),
       { separator: true },
       { label: 'Preferences', shortcut: `${mod},`, action: () => window.codeherd.menuAction('preferences') },
       { label: 'About CodeHerd', action: () => window.codeherd.menuAction('about') },
@@ -256,6 +258,11 @@ async function init(): Promise<void> {
     if (modKey(e) && e.key === 'b') {
       e.preventDefault();
       sidebar.toggle();
+    }
+    // F12: toggle dev tools (dev only)
+    if (e.key === 'F12' && window.codeherd.isDev) {
+      e.preventDefault();
+      window.codeherd.menuAction('toggleDevTools');
     }
   });
 

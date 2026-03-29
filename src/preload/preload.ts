@@ -87,4 +87,5 @@ contextBridge.exposeInMainWorld('codeherd', {
   },
   getResolvedTheme: (): Promise<string> =>
     ipcRenderer.invoke(IPC.THEME_GET_RESOLVED),
+  isDev: !ipcRenderer.sendSync('app:is-packaged'),
 });
