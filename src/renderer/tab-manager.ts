@@ -1,4 +1,4 @@
-import type { TabId, TabState } from '../shared/types';
+import type { TabId, TabState, TabSwitchMode } from '../shared/types';
 import { TerminalManager } from './terminal-manager';
 import { SessionPicker } from './session-picker';
 
@@ -14,6 +14,8 @@ export class TabManager {
   private warnBeforeClose = true;
   private dragState: { tabId: TabId; el: HTMLElement; ghost: HTMLElement; startX: number } | null = null;
   private sessionPicker = new SessionPicker();
+  private mruHistory: TabId[] = [];
+  private tabSwitchMode: TabSwitchMode = 'mru';
 
   constructor(terminalManager: TerminalManager) {
     this.tabBar = document.getElementById('tab-bar')!;
@@ -39,6 +41,10 @@ export class TabManager {
 
   setWarnBeforeClose(warn: boolean): void {
     this.warnBeforeClose = warn;
+  }
+
+  setTabSwitchMode(mode: TabSwitchMode): void {
+    this.tabSwitchMode = mode;
   }
 
   async createTab(folder: string, resumeSessionId?: string): Promise<TabState> {
@@ -83,6 +89,11 @@ export class TabManager {
       tab.lastActivityAt = Date.now();
     }
 
+    // Update MRU history: move this tab to the front
+    const mruIdx = this.mruHistory.indexOf(tabId);
+    if (mruIdx >= 0) this.mruHistory.splice(mruIdx, 1);
+    this.mruHistory.unshift(tabId);
+
     this.terminalManager.show(tabId);
 
     // Update tab bar visual state
@@ -114,6 +125,10 @@ export class TabManager {
     this.terminalManager.dispose(tabId);
     this.tabs.delete(tabId);
     this.tabBar.querySelector(`[data-tab-id="${tabId}"]`)?.remove();
+
+    // Remove from MRU history
+    const mruIdx = this.mruHistory.indexOf(tabId);
+    if (mruIdx >= 0) this.mruHistory.splice(mruIdx, 1);
 
     if (this.activeTabId === tabId) {
       const remaining = Array.from(this.tabs.keys());
@@ -354,6 +369,43 @@ export class TabManager {
       this.switchTo(tabId);
     }
     this.hideEmptyState();
+  }
+
+  /** Switch to the next tab (Ctrl+Tab). Uses MRU or sequential order based on preference. */
+  switchToNext(): void {
+    const tabIds = this.getOrderedTabIds();
+    if (tabIds.length < 2 || !this.activeTabId) return;
+    const idx = tabIds.indexOf(this.activeTabId);
+    this.switchTo(tabIds[(idx + 1) % tabIds.length]);
+  }
+
+  /** Switch to the previous tab (Ctrl+Shift+Tab). Uses MRU or sequential order based on preference. */
+  switchToPrevious(): void {
+    const tabIds = this.getOrderedTabIds();
+    if (tabIds.length < 2 || !this.activeTabId) return;
+    const idx = tabIds.indexOf(this.activeTabId);
+    this.switchTo(tabIds[(idx - 1 + tabIds.length) % tabIds.length]);
+  }
+
+  /** Switch to tab at the given 1-based index (Alt+1 through Alt+9). */
+  switchToIndex(index: number): void {
+    const tabIds = Array.from(this.tabs.keys());
+    if (index >= 1 && index <= tabIds.length) {
+      this.switchTo(tabIds[index - 1]);
+    }
+  }
+
+  private getOrderedTabIds(): TabId[] {
+    if (this.tabSwitchMode === 'mru') {
+      // Return MRU order, filling in any tabs not yet in history
+      const ordered = this.mruHistory.filter(id => this.tabs.has(id));
+      for (const id of this.tabs.keys()) {
+        if (!ordered.includes(id)) ordered.push(id);
+      }
+      return ordered;
+    }
+    // Sequential: tab bar order
+    return Array.from(this.tabs.keys());
   }
 
   async openNewTab(): Promise<void> {

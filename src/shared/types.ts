@@ -24,10 +24,13 @@ export interface RecentlyClosedTab {
 export type ThemePreference = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
 
+export type TabSwitchMode = 'mru' | 'sequential';
+
 export interface Preferences {
   warnBeforeClosingTabs: boolean;
   fontFamily: string;
   theme: ThemePreference;
+  tabSwitchMode: TabSwitchMode;
 }
 
 export interface AppState {

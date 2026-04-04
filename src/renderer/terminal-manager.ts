@@ -111,6 +111,12 @@ export class TerminalManager {
         }
       }
 
+      // Let Ctrl+Tab and Ctrl+Shift+Tab pass through for tab switching
+      if (e.ctrlKey && e.key === 'Tab') return false;
+
+      // Let Alt+1 through Alt+9 pass through for tab switching
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.key >= '1' && e.key <= '9') return false;
+
       // Ctrl+Enter: send LF (newline) instead of CR so Claude Code inserts a new line
       if (e.ctrlKey && e.key === 'Enter') {
         window.codeherd.inputToTab(ref.tabId, '\n');

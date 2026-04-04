@@ -23,6 +23,7 @@ export const DEFAULT_PREFERENCES = {
   warnBeforeClosingTabs: true,
   fontFamily: '',
   theme: 'dark' as const,
+  tabSwitchMode: 'mru' as const,
 };
 
 export const DEFAULT_APP_STATE = {
