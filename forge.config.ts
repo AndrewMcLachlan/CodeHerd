@@ -28,7 +28,7 @@ const config: ForgeConfig = {
     asar: true,
     name: 'CodeHerd',
     executableName: 'codeherd',
-    icon: './assets/icon',
+    icon: process.platform === 'darwin' ? './assets/icon-mac' : './assets/icon',
   },
   rebuildConfig: {},
   makers,

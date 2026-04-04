@@ -69,6 +69,14 @@ body {
   flex-shrink: 0;
 }
 
+[data-platform="mac"] #titlebar {
+  padding-left: 80px;
+}
+
+[data-platform="mac"] #app-menu-btn {
+  display: none;
+}
+
 #titlebar-drag {
   flex: 1;
   height: 100%;

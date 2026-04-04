@@ -72,6 +72,7 @@ async function init(): Promise<void> {
   (document.getElementById('app-menu-icon') as HTMLImageElement).src = './menu-icon.png';
 
   const isMac = navigator.platform.startsWith('Mac');
+  if (isMac) document.documentElement.dataset.platform = 'mac';
   const mod = isMac ? '\u2318' : 'Ctrl+';
 
   // Track recently closed tabs (loaded from persisted state)

@@ -27,18 +27,22 @@ export class PtyManager {
       args.push('--session-id', sessionId);
     }
 
-    // On Windows, spawn via cmd.exe so node-pty gets a proper console
-    const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/bash';
-    const shellArgs = process.platform === 'win32'
+    // On Windows, spawn via cmd.exe so node-pty gets a proper console.
+    // On macOS/Linux, use the user's login shell so their PATH is loaded
+    // (critical when the app is launched from Finder/dock rather than terminal).
+    const isWin = process.platform === 'win32';
+    const userShell = process.env.SHELL || '/bin/zsh';
+    const shell = isWin ? 'cmd.exe' : userShell;
+    const shellArgs = isWin
       ? ['/c', 'claude', ...args]
-      : ['-c', `claude ${args.join(' ')}`];
+      : ['-l', '-c', `claude ${args.join(' ')}`];
 
     const ptyProcess = pty.spawn(shell, shellArgs, {
       name: 'xterm-256color',
       cols: cols || 80,
       rows: rows || 24,
       cwd: folder,
-      env: { ...process.env } as Record<string, string>,
+      env: { ...process.env, SHELL: userShell } as Record<string, string>,
     });
 
     this.ptys.set(tabId, { process: ptyProcess, sessionId });
