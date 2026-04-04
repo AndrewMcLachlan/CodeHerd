@@ -143,6 +143,13 @@
       <label for="warn-close">Warn before closing tabs</label>
     </div>
     <div class="field">
+      <label for="tab-switch-select">Ctrl+Tab behaviour</label>
+      <select id="tab-switch-select">
+        <option value="mru">Most recently used</option>
+        <option value="sequential">Sequential (tab bar order)</option>
+      </select>
+    </div>
+    <div class="field">
       <label for="font-select">Terminal font</label>
       <select id="font-select">
         <option value="">System default</option>
@@ -175,6 +182,7 @@
     const warnClose = document.getElementById('warn-close');
     const fontSelect = document.getElementById('font-select');
     const themeSelect = document.getElementById('theme-select');
+    const tabSwitchSelect = document.getElementById('tab-switch-select');
     const customFontRow = document.getElementById('custom-font-row');
     const customFont = document.getElementById('custom-font');
 
@@ -186,6 +194,7 @@
     window.preferencesAPI.getPreferences().then((prefs) => {
       warnClose.checked = prefs.warnBeforeClosingTabs;
       themeSelect.value = prefs.theme || 'dark';
+      tabSwitchSelect.value = prefs.tabSwitchMode || 'mru';
       // Check if font matches a preset option
       const options = Array.from(fontSelect.options).map(o => o.value);
       if (options.includes(prefs.fontFamily)) {
@@ -206,6 +215,7 @@
         warnBeforeClosingTabs: warnClose.checked,
         fontFamily,
         theme: themeSelect.value,
+        tabSwitchMode: tabSwitchSelect.value,
       }).then(() => {
         window.preferencesAPI.closeWindow();
       });

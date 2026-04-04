@@ -312,7 +312,7 @@ export function registerIpcHandlers(
         const prefsColors = getThemeColors(resolveTheme(stateManager.getPreferences().theme));
         prefsWin = new BrowserWindow({
           width: 480,
-          height: 380,
+          height: 450,
           resizable: false,
           minimizable: false,
           maximizable: false,

@@ -224,11 +224,12 @@ async function init(): Promise<void> {
   });
 
   // Apply preferences
-  const prefs = state.preferences ?? { warnBeforeClosingTabs: true, fontFamily: '', theme: 'dark' as const };
+  const prefs = state.preferences ?? { warnBeforeClosingTabs: true, fontFamily: '', theme: 'dark' as const, tabSwitchMode: 'mru' as const };
   if (prefs.fontFamily) {
     terminalManager.setFontFamily(prefs.fontFamily);
   }
   tabManager.setWarnBeforeClose(prefs.warnBeforeClosingTabs);
+  tabManager.setTabSwitchMode(prefs.tabSwitchMode ?? 'mru');
 
   // Apply initial theme
   const resolvedTheme = await window.codeherd.getResolvedTheme();
@@ -238,6 +239,7 @@ async function init(): Promise<void> {
   window.codeherd.onPreferencesChanged((newPrefs) => {
     terminalManager.setFontFamily(newPrefs.fontFamily);
     tabManager.setWarnBeforeClose(newPrefs.warnBeforeClosingTabs);
+    tabManager.setTabSwitchMode(newPrefs.tabSwitchMode ?? 'mru');
   });
 
   // Listen for theme changes (from preferences save or OS theme change)
@@ -266,6 +268,20 @@ async function init(): Promise<void> {
     if (modKey(e) && e.key === 'b') {
       e.preventDefault();
       sidebar.toggle();
+    }
+    // Ctrl+Tab / Ctrl+Shift+Tab: cycle through tabs
+    if (e.ctrlKey && e.key === 'Tab') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        tabManager.switchToPrevious();
+      } else {
+        tabManager.switchToNext();
+      }
+    }
+    // Alt+1 through Alt+9: switch to tab by index
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.key >= '1' && e.key <= '9') {
+      e.preventDefault();
+      tabManager.switchToIndex(parseInt(e.key, 10));
     }
     // F12: toggle dev tools (dev only)
     if (e.key === 'F12' && window.codeherd.isDev) {
