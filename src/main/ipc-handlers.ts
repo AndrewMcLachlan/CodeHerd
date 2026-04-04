@@ -26,6 +26,7 @@ export function registerIpcHandlers(
   stateManager: StateManager,
   getMainWindow: () => BrowserWindow | null,
   isQuitting: () => boolean,
+  onRecentlyClosedChanged?: (items: RecentlyClosedTab[]) => void,
 ): void {
   const tabs = new Map<string, TabState>();
   const sessionTracker = new SessionTracker();
@@ -195,6 +196,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.RECENTLY_CLOSED, async (_event, items: RecentlyClosedTab[]) => {
     stateManager.setRecentlyClosed(items);
     stateManager.save();
+    onRecentlyClosedChanged?.(items);
   });
 
   ipcMain.handle(IPC.THEME_GET_RESOLVED, async () => {

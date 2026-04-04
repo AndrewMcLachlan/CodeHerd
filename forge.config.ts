@@ -1,3 +1,4 @@
+import path from 'path';
 import type { ForgeConfig, MakerBase } from '@electron-forge/shared-types';
 import { MakerZIP } from '@electron-forge/maker-zip';
 
@@ -25,10 +26,32 @@ try {
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    asar: {
+      unpack: '**/{node-pty,node-pty/**}',
+    },
     name: 'CodeHerd',
     executableName: 'codeherd',
-    icon: './assets/icon',
+    icon: path.resolve(__dirname, 'assets', process.platform === 'darwin' ? 'icon-mac' : 'icon'),
+    appBundleId: 'com.andrewmclachlan.codeherd',
+    darwinDarkModeSupport: true,
+    extendInfo: {
+      CFBundleDisplayName: 'CodeHerd',
+    },
+  },
+  hooks: {
+    postPackage: async (_config, options) => {
+      if (process.platform !== 'darwin') return;
+      const fs = await import('fs');
+      const plistPath = path.join(options.outputPaths[0], 'CodeHerd.app', 'Contents', 'Info.plist');
+      if (fs.existsSync(plistPath)) {
+        let plist = fs.readFileSync(plistPath, 'utf-8');
+        plist = plist.replace(
+          /<key>CFBundleDisplayName<\/key>\s*<string>[^<]*<\/string>/,
+          '<key>CFBundleDisplayName</key>\n    <string>CodeHerd</string>',
+        );
+        fs.writeFileSync(plistPath, plist);
+      }
+    },
   },
   rebuildConfig: {},
   makers,

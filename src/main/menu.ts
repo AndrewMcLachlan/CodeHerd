@@ -1,6 +1,8 @@
 import { Menu, BrowserWindow, app } from 'electron';
+import { IPC } from '../shared/ipc-channels';
+import type { RecentlyClosedTab } from '../shared/types';
 
-export function buildAppMenu(getMainWindow: () => BrowserWindow | null): Menu {
+export function buildAppMenu(getMainWindow: () => BrowserWindow | null, recentlyClosed: RecentlyClosedTab[] = []): Menu {
   const isMac = process.platform === 'darwin';
 
   // On macOS the menu shows in the system menu bar, so keep it full.
@@ -24,6 +26,18 @@ export function buildAppMenu(getMainWindow: () => BrowserWindow | null): Menu {
           click: () => {
             getMainWindow()?.webContents.send('menu:close-tab');
           },
+        },
+        {
+          label: 'Recently Closed',
+          enabled: recentlyClosed.length > 0,
+          submenu: recentlyClosed.length > 0
+            ? recentlyClosed.map((item, index) => ({
+                label: `${item.label} — ${item.folder}`,
+                click: () => {
+                  getMainWindow()?.webContents.send(IPC.MENU_RESTORE_RECENT, { folder: item.folder, sessionId: item.sessionId, index });
+                },
+              }))
+            : [{ label: 'No recently closed tabs', enabled: false }],
         },
         { type: 'separator' },
         {

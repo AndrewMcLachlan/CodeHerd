@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, nativeTheme } from 'electron';
+import type { RecentlyClosedTab } from '../shared/types';
 import * as path from 'path';
 import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
@@ -40,6 +41,11 @@ app.on('second-instance', () => {
   }
 });
 
+// Set dock icon in dev mode on macOS (packaged apps use the bundled .icns)
+if (process.platform === 'darwin' && !app.isPackaged) {
+  app.dock.setIcon(path.join(__dirname, '..', 'assets', 'icon-mac.png'));
+}
+
 function createWindow(): void {
   const savedState = stateManager.getState();
   const bounds = savedState.windowBounds;
@@ -58,7 +64,7 @@ function createWindow(): void {
     width: bounds.width,
     height: bounds.height,
     title: 'CodeHerd',
-    icon: path.join(__dirname, '..', 'assets', 'icon.png'),
+    icon: path.join(__dirname, '..', 'assets', isMac ? 'icon-mac.png' : 'icon.png'),
     backgroundColor: colors.bg,
     titleBarStyle: 'hidden',
     ...(isMac
@@ -151,8 +157,12 @@ let isQuitting = false;
 const isStylingMode = process.argv.includes('--styling');
 
 app.whenReady().then(() => {
-  registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting);
-  Menu.setApplicationMenu(buildAppMenu(() => mainWindow));
+  const rebuildMenu = (items: RecentlyClosedTab[]) => {
+    Menu.setApplicationMenu(buildAppMenu(() => mainWindow, items));
+  };
+  registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting, rebuildMenu);
+  const initialState = stateManager.getState();
+  Menu.setApplicationMenu(buildAppMenu(() => mainWindow, initialState.recentlyClosed));
   createWindow();
 });
 
