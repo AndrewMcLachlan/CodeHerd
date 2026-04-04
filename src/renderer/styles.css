@@ -69,6 +69,14 @@ body {
   flex-shrink: 0;
 }
 
+[data-platform="mac"] #titlebar {
+  padding-left: 80px;
+}
+
+[data-platform="mac"] #app-menu-btn {
+  display: none;
+}
+
 #titlebar-drag {
   flex: 1;
   height: 100%;
@@ -556,12 +564,11 @@ body {
   font-weight: bold;
   color: var(--orange);
   margin-right: 2px;
-  top: -2px;
+  top: -1.5px;
 }
 
 /* Attention: pulsing orange dot */
 .tab.attention .tab-label::before {
-  /*content: '●';*/
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -569,8 +576,6 @@ body {
   margin-right: 6px;
   animation: pulse-dot 1.5s ease-in-out infinite;
   color: var(--orange);
-  /*font-size: 13px;
-  top: -2px;*/
 }
 
 @keyframes pulse-dot {
