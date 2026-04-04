@@ -1,5 +1,7 @@
 import * as pty from 'node-pty';
 import { execSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { TabId, FolderPath, SessionId } from '../shared/types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -8,8 +10,32 @@ interface PtyEntry {
   sessionId: SessionId;
 }
 
+function getLoginShellEnv(): Record<string, string> {
+  if (process.platform === 'win32') return { ...process.env } as Record<string, string>;
+  try {
+    const shell = process.env.SHELL || '/bin/zsh';
+    // Run login+interactive shell to source both .zprofile and .zshrc
+    const raw = execSync(`${shell} -l -i -c 'env'`, {
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const env: Record<string, string> = {};
+    for (const line of raw.split('\n')) {
+      const idx = line.indexOf('=');
+      if (idx > 0) {
+        env[line.substring(0, idx)] = line.substring(idx + 1);
+      }
+    }
+    return env;
+  } catch {
+    return { ...process.env } as Record<string, string>;
+  }
+}
+
 export class PtyManager {
   private ptys = new Map<TabId, PtyEntry>();
+  private shellEnv = getLoginShellEnv();
 
   spawn(
     tabId: TabId,
@@ -33,16 +59,23 @@ export class PtyManager {
     const isWin = process.platform === 'win32';
     const userShell = process.env.SHELL || '/bin/zsh';
     const shell = isWin ? 'cmd.exe' : userShell;
+
+    // Resolve claude's full path from the login shell env, since the
+    // non-interactive PTY shell may not have it on PATH.
+    const claudePath = this.shellEnv.PATH?.split(':')
+      .map(p => path.join(p, 'claude'))
+      .find(p => fs.existsSync(p)) || 'claude';
+
     const shellArgs = isWin
-      ? ['/c', 'claude', ...args]
-      : ['-l', '-c', `claude ${args.join(' ')}`];
+      ? ['/c', claudePath, ...args]
+      : ['-l', '-c', `${claudePath} ${args.join(' ')}`];
 
     const ptyProcess = pty.spawn(shell, shellArgs, {
       name: 'xterm-256color',
       cols: cols || 80,
       rows: rows || 24,
       cwd: folder,
-      env: { ...process.env, SHELL: userShell } as Record<string, string>,
+      env: { ...this.shellEnv, TERM: 'xterm-256color', SHELL: userShell },
     });
 
     this.ptys.set(tabId, { process: ptyProcess, sessionId });
