@@ -31,6 +31,7 @@ declare global {
       onMenuOpenFolder: (cb: () => void) => () => void;
       onMenuCloseTab: (cb: () => void) => () => void;
       onMenuToggleSidebar: (cb: () => void) => () => void;
+      onMenuRestoreRecent: (cb: (msg: { folder: string; sessionId: string; index: number }) => void) => () => void;
       onMenuPreferences: (cb: () => void) => () => void;
       onPreferencesChanged: (cb: (prefs: Preferences) => void) => () => void;
       onThemeChanged: (cb: (resolvedTheme: string) => void) => () => void;
@@ -210,6 +211,12 @@ async function init(): Promise<void> {
 
   window.codeherd.onMenuToggleSidebar(() => {
     sidebar.toggle();
+  });
+
+  window.codeherd.onMenuRestoreRecent((msg) => {
+    tabManager.createTab(msg.folder, msg.sessionId);
+    recentlyClosed.splice(msg.index, 1);
+    saveRecent();
   });
 
   window.codeherd.onMenuPreferences(() => {

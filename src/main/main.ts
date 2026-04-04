@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, nativeTheme } from 'electron';
+import type { RecentlyClosedTab } from '../shared/types';
 import * as path from 'path';
 import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
@@ -156,8 +157,12 @@ let isQuitting = false;
 const isStylingMode = process.argv.includes('--styling');
 
 app.whenReady().then(() => {
-  registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting);
-  Menu.setApplicationMenu(buildAppMenu(() => mainWindow));
+  const rebuildMenu = (items: RecentlyClosedTab[]) => {
+    Menu.setApplicationMenu(buildAppMenu(() => mainWindow, items));
+  };
+  registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting, rebuildMenu);
+  const initialState = stateManager.getState();
+  Menu.setApplicationMenu(buildAppMenu(() => mainWindow, initialState.recentlyClosed));
   createWindow();
 });
 

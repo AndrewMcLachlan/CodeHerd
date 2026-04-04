@@ -75,6 +75,11 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.on('menu:preferences', listener);
     return () => { ipcRenderer.removeListener('menu:preferences', listener); };
   },
+  onMenuRestoreRecent: (callback: (msg: { folder: string; sessionId: string; index: number }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, msg: { folder: string; sessionId: string; index: number }) => callback(msg);
+    ipcRenderer.on(IPC.MENU_RESTORE_RECENT, listener);
+    return () => { ipcRenderer.removeListener(IPC.MENU_RESTORE_RECENT, listener); };
+  },
   onPreferencesChanged: (callback: (prefs: Preferences) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, prefs: Preferences) => callback(prefs);
     ipcRenderer.on('preferences:changed', listener);
