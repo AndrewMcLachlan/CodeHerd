@@ -34,7 +34,7 @@
     "@electron-forge/maker-zip": "^7.11.1",
     "@electron/rebuild": "^4.0.4",
     "@types/node": "^25.7.0",
-    "electron": "^41.5.0",
+    "electron": "^42.0.1",
     "esbuild": "^0.28.0",
     "tsx": "^4.19.0",
     "typescript": "^6.0.3"
