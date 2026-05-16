@@ -8,6 +8,8 @@ export interface TabState {
   currentFolder: FolderPath;
   sessionId: SessionId;
   label: string;
+  /** Optional CSS color (hex like #f38ba8, or any valid CSS color). Drawn as the tab's top border. */
+  color?: string;
   isActive: boolean;
   createdAt: number;
   lastActivityAt: number;
@@ -76,6 +78,15 @@ export interface PtyResizeMessage {
   tabId: TabId;
   cols: number;
   rows: number;
+}
+
+/** Pushed from main → renderer when Claude Code updates a session's name or color. */
+export interface TabMetadataMessage {
+  tabId: TabId;
+  /** Present when Claude has set or cleared a name. `null` means cleared. */
+  name?: string | null;
+  /** Present when Claude has set or cleared a color. `null` means cleared. */
+  color?: string | null;
 }
 
 export interface GitInfo {

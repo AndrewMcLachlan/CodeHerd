@@ -281,6 +281,18 @@ body {
   display: none;
 }
 
+/* Tabs that Claude Code has assigned a custom colour via /color.
+ * The top border becomes the chosen colour and gets thicker so the tab stands out. */
+.tab[data-colored] {
+  border-top: 3px solid var(--tab-color);
+  height: 32px;
+}
+
+.tab[data-colored].active {
+  border-top: 3px solid var(--tab-color);
+  height: 35px;
+}
+
 .tab-label {
   flex: 1;
   font-size: 13px;

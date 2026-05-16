@@ -1,6 +1,34 @@
-import type { TabId, TabState, TabSwitchMode } from '../shared/types';
+import type { TabId, TabMetadataMessage, TabState, TabSwitchMode } from '../shared/types';
 import { TerminalManager } from './terminal-manager';
 import { SessionPicker } from './session-picker';
+
+/**
+ * Map Claude Code's named colors (e.g. "red") to catppuccin hex values that harmonise with the
+ * app's existing palette. Unknown values (including hex codes from `/color #abc123`) pass through.
+ */
+const NAMED_COLOR_MAP: Record<string, string> = {
+  red: '#f38ba8',
+  orange: '#fab387',
+  yellow: '#f9e2af',
+  green: '#a6e3a1',
+  teal: '#94e2d5',
+  cyan: '#94e2d5',
+  blue: '#89b4fa',
+  sapphire: '#74c7ec',
+  sky: '#89dceb',
+  lavender: '#b4befe',
+  magenta: '#f5c2e7',
+  pink: '#f5c2e7',
+  purple: '#cba6f7',
+  mauve: '#cba6f7',
+  white: '#cdd6f4',
+  gray: '#6c7086',
+  grey: '#6c7086',
+};
+
+function resolveCssColor(value: string): string {
+  return NAMED_COLOR_MAP[value.toLowerCase()] ?? value;
+}
 
 export class TabManager {
   private tabs = new Map<TabId, TabState>();
@@ -143,6 +171,43 @@ export class TabManager {
 
     // Graceful shutdown happens in the background
     window.codeherd.closeTab(tabId);
+  }
+
+  /**
+   * Apply a metadata update pushed from the main process (driven by Claude Code's
+   * `/rename` and `/color` slash commands writing to the session file).
+   * Updates the in-memory tab and the DOM; persistence lives in the main process.
+   */
+  applyMetadata(msg: TabMetadataMessage): void {
+    const tab = this.tabs.get(msg.tabId);
+    if (!tab) return;
+
+    if (msg.name !== undefined) {
+      const trimmed = msg.name?.trim() ?? '';
+      const defaultLabel = (tab.launchFolder.replace(/\\/g, '/').split('/').pop() || tab.launchFolder);
+      const next = trimmed || defaultLabel;
+      if (tab.label !== next) {
+        tab.label = next;
+        const labelEl = this.tabBar.querySelector(`[data-tab-id="${msg.tabId}"] .tab-label`);
+        if (labelEl) labelEl.textContent = tab.label;
+      }
+    }
+
+    if (msg.color !== undefined) {
+      if (msg.color) tab.color = msg.color; else delete tab.color;
+      const tabEl = this.tabBar.querySelector<HTMLElement>(`[data-tab-id="${msg.tabId}"]`);
+      if (tabEl) this.applyColorToElement(tabEl, tab.color);
+    }
+  }
+
+  private applyColorToElement(el: HTMLElement, color: string | undefined): void {
+    if (color) {
+      el.dataset.colored = 'true';
+      el.style.setProperty('--tab-color', resolveCssColor(color));
+    } else {
+      delete el.dataset.colored;
+      el.style.removeProperty('--tab-color');
+    }
   }
 
   updateStatus(tabId: TabId, status: TabState['status']): void {
@@ -297,6 +362,7 @@ export class TabManager {
     el.className = 'tab';
     el.dataset.tabId = tab.id;
     el.title = tab.launchFolder;
+    this.applyColorToElement(el, tab.color);
 
     const label = document.createElement('span');
     label.className = 'tab-label';

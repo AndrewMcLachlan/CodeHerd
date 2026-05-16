@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import type { TabCreateRequest, PtyDataMessage, AppState, TabState, ClaudeSession, GitInfo, RecentlyClosedTab, Preferences } from '../shared/types';
+import type { TabCreateRequest, PtyDataMessage, AppState, TabState, ClaudeSession, GitInfo, RecentlyClosedTab, Preferences, TabMetadataMessage } from '../shared/types';
 
 contextBridge.exposeInMainWorld('codeherd', {
   // Invoke (request/response)
@@ -52,6 +52,11 @@ contextBridge.exposeInMainWorld('codeherd', {
     const listener = (_event: Electron.IpcRendererEvent, msg: { tabId: string; status: string }) => callback(msg);
     ipcRenderer.on(IPC.TAB_STATUS, listener);
     return () => { ipcRenderer.removeListener(IPC.TAB_STATUS, listener); };
+  },
+  onTabMetadata: (callback: (msg: TabMetadataMessage) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, msg: TabMetadataMessage) => callback(msg);
+    ipcRenderer.on(IPC.TAB_METADATA, listener);
+    return () => { ipcRenderer.removeListener(IPC.TAB_METADATA, listener); };
   },
 
   // Menu events (main -> renderer)
