@@ -2,10 +2,11 @@ import { ipcMain, BrowserWindow, dialog, clipboard, app, shell, nativeTheme } fr
 import * as path from 'path';
 import * as fs from 'fs';
 import { IPC } from '../shared/ipc-channels';
-import type { TabState, TabCreateRequest, RecentlyClosedTab, Preferences, ThemePreference, ResolvedTheme } from '../shared/types';
+import type { TabState, TabCreateRequest, RecentlyClosedTab, Preferences, ThemePreference, ResolvedTheme, TabMetadataMessage } from '../shared/types';
 import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
 import { SessionTracker } from './session-tracker';
+import { SessionMetadataWatcher } from './session-metadata-watcher';
 import { getGitInfo } from './git-info';
 import { detectStatus } from './status-detection';
 
@@ -37,6 +38,31 @@ export function registerIpcHandlers(
       win.webContents.send(channel, ...args);
     }
   }
+
+  // React to /rename and /color slash commands executed inside Claude Code by watching the
+  // per-session metadata file Claude writes to ~/.claude/sessions/<pid>.json.
+  const metadataWatcher = new SessionMetadataWatcher((msg: TabMetadataMessage) => {
+    const tab = tabs.get(msg.tabId);
+    if (!tab) return;
+    let dirty = false;
+    if (msg.name !== undefined) {
+      const next = msg.name && msg.name.trim().length > 0 ? msg.name.trim() : path.basename(tab.launchFolder);
+      if (tab.label !== next) { tab.label = next; dirty = true; }
+    }
+    if (msg.color !== undefined) {
+      if (msg.color) {
+        if (tab.color !== msg.color) { tab.color = msg.color; dirty = true; }
+      } else if (tab.color !== undefined) {
+        delete tab.color;
+        dirty = true;
+      }
+    }
+    if (dirty) {
+      saveTabState();
+      safeSend(IPC.TAB_METADATA, msg);
+    }
+  });
+  metadataWatcher.start();
 
   function saveTabState(): void {
     stateManager.setTabs(Array.from(tabs.values()));
@@ -85,12 +111,19 @@ export function registerIpcHandlers(
       }
     });
 
+    // Seed the tab with any metadata Claude has already written for this session, so the
+    // renderer paints the correct label/colour on first render rather than waiting for the
+    // IPC metadata event (which would briefly flash the folder-basename default).
+    const known = metadataWatcher.getKnownMetadata(sessionId);
+    const initialLabel = known?.name?.trim() || path.basename(request.folder);
+
     const tab: TabState = {
       id: tabId,
       launchFolder: request.folder,
       currentFolder: request.folder,
       sessionId,
-      label: path.basename(request.folder),
+      label: initialLabel,
+      ...(known?.color ? { color: known.color } : {}),
       isActive: true,
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
@@ -103,11 +136,14 @@ export function registerIpcHandlers(
     }
 
     tabs.set(tabId, tab);
+    metadataWatcher.registerTab(tabId, sessionId);
     saveTabState();
     return tab;
   });
 
   ipcMain.handle(IPC.TAB_CLOSE, async (_event, { tabId }: { tabId: string }): Promise<void> => {
+    const tab = tabs.get(tabId);
+    if (tab) metadataWatcher.unregisterTab(tab.sessionId);
     await ptyManager.gracefulKill(tabId);
     tabs.delete(tabId);
     saveTabState();

@@ -1,4 +1,4 @@
-import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo, Preferences } from '../shared/types';
+import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo, Preferences, TabMetadataMessage } from '../shared/types';
 import { TerminalManager } from './terminal-manager';
 import { TabManager } from './tab-manager';
 import { Sidebar } from './sidebar';
@@ -14,6 +14,7 @@ declare global {
       closeTab: (tabId: string) => Promise<void>;
       resizeTab: (tabId: string, cols: number, rows: number) => Promise<void>;
       inputToTab: (tabId: string, data: string) => Promise<void>;
+      reorderTabs: (tabIds: string[]) => Promise<void>;
       getAllTabs: () => Promise<TabState[]>;
       listSessions: (folder: string) => Promise<ClaudeSession[]>;
       pickFolder: () => Promise<string | null>;
@@ -28,6 +29,7 @@ declare global {
       onPtyData: (cb: (msg: PtyDataMessage) => void) => () => void;
       onPtyExit: (cb: (msg: { tabId: string; exitCode: number }) => void) => () => void;
       onTabStatus: (cb: (msg: { tabId: string; status: string }) => void) => () => void;
+      onTabMetadata: (cb: (msg: TabMetadataMessage) => void) => () => void;
       onMenuOpenFolder: (cb: () => void) => () => void;
       onMenuCloseTab: (cb: () => void) => () => void;
       onMenuToggleSidebar: (cb: () => void) => () => void;
@@ -185,6 +187,10 @@ async function init(): Promise<void> {
 
   window.codeherd.onTabStatus((msg) => {
     tabManager.updateStatus(msg.tabId, msg.status as TabState['status']);
+  });
+
+  window.codeherd.onTabMetadata((msg) => {
+    tabManager.applyMetadata(msg);
   });
 
   // New tab button

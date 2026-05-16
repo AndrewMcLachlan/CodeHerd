@@ -24,6 +24,7 @@ export const IPC = {
   PTY_DATA: 'pty:data',
   PTY_EXIT: 'pty:exit',
   TAB_STATUS: 'tab:status',
+  TAB_METADATA: 'tab:metadata',
   THEME_CHANGED: 'theme:changed',
   MENU_RESTORE_RECENT: 'menu:restore-recent',
 } as const;
