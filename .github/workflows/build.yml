@@ -19,7 +19,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-2022
             platform: win32
           - os: macos-latest
             platform: darwin
