@@ -9,6 +9,10 @@ export class StatusBar {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private currentFolder: string | null = null;
   private titles = new Map<TabId, string>();
+  /** Last-known git info per folder, so switching back to a folder paints instantly. */
+  private gitCache = new Map<string, GitInfo>();
+  /** Monotonic token: a refresh only paints if it's still the most recent one issued. */
+  private refreshSeq = 0;
 
   constructor() {
     this.element = document.getElementById('status-bar')!;
@@ -44,37 +48,55 @@ export class StatusBar {
       this.titleEl.classList.add('hidden');
     }
 
-    // Git info
-    await this.refreshGit(folder);
-
-    // Start polling if folder changed
+    // On a folder change, repaint git immediately from cache (or blank it) so the
+    // previous tab's branch never lingers while the fresh lookup is in flight.
     if (folder !== this.currentFolder) {
       this.currentFolder = folder;
+      const cached = this.gitCache.get(folder);
+      if (cached) this.applyGit(cached);
+      else this.clearGit();
       this.startPolling(folder);
     }
+
+    // Git info (async; may resolve after a later switch — guarded by refreshSeq)
+    await this.refreshGit(folder);
   }
 
   private async refreshGit(folder: string): Promise<void> {
+    const seq = ++this.refreshSeq;
     try {
       const git = await window.codeherd.getGitInfo(folder);
-      if (git.isRepo) {
-        this.gitEl.classList.remove('hidden');
-        this.gitEl.innerHTML = this.renderGit(git);
-        this.gitEl.title = this.gitTooltip(git);
-      } else {
-        this.gitEl.classList.add('hidden');
-      }
-
-      if (git.worktree) {
-        this.worktreeEl.classList.remove('hidden');
-        this.worktreeEl.textContent = `worktree: ${git.worktree}`;
-      } else {
-        this.worktreeEl.classList.add('hidden');
-      }
+      this.gitCache.set(folder, git);
+      // Drop stale resolutions: a newer refresh (e.g. the user switched tabs again)
+      // has superseded this one, so don't let it overwrite the current display.
+      if (seq !== this.refreshSeq) return;
+      this.applyGit(git);
     } catch {
+      if (seq !== this.refreshSeq) return;
+      this.clearGit();
+    }
+  }
+
+  private applyGit(git: GitInfo): void {
+    if (git.isRepo) {
+      this.gitEl.classList.remove('hidden');
+      this.gitEl.innerHTML = this.renderGit(git);
+      this.gitEl.title = this.gitTooltip(git);
+    } else {
       this.gitEl.classList.add('hidden');
+    }
+
+    if (git.worktree) {
+      this.worktreeEl.classList.remove('hidden');
+      this.worktreeEl.textContent = `worktree: ${git.worktree}`;
+    } else {
       this.worktreeEl.classList.add('hidden');
     }
+  }
+
+  private clearGit(): void {
+    this.gitEl.classList.add('hidden');
+    this.worktreeEl.classList.add('hidden');
   }
 
   private renderGit(git: GitInfo): string {
