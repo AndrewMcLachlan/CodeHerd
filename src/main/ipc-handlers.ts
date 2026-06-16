@@ -7,6 +7,7 @@ import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
 import { SessionTracker } from './session-tracker';
 import { SessionMetadataWatcher } from './session-metadata-watcher';
+import { HistoryWatcher } from './history-watcher';
 import { getGitInfo } from './git-info';
 import { detectStatus } from './status-detection';
 
@@ -63,6 +64,34 @@ export function registerIpcHandlers(
     }
   });
   metadataWatcher.start();
+
+  const normalizeFolder = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+
+  // A tab's sessionId is captured once, at spawn. But Claude rolls it forward mid-tab
+  // (notably `/clear`, which starts a new conversation under a new id), and nothing
+  // else tells us. Without this, restart resumes the stale session. history.jsonl gets
+  // one entry per submitted prompt tagged with the *current* session id for its folder,
+  // so we use it to keep the owning tab in sync.
+  const historyWatcher = new HistoryWatcher(({ project, sessionId }) => {
+    const target = normalizeFolder(project);
+    const candidates = Array.from(tabs.values()).filter(t => normalizeFolder(t.launchFolder) === target);
+    if (candidates.length === 0) return;
+
+    // With multiple tabs on the same folder, the prompt that produced this entry came
+    // from whichever the user is interacting with — prefer the active tab, else the
+    // most recently active one.
+    const tab = candidates.find(t => t.isActive)
+      ?? candidates.sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+    if (!tab || tab.sessionId === sessionId) return;
+
+    // Re-point the metadata watcher at the new session so /rename and /color keep working.
+    metadataWatcher.unregisterTab(tab.sessionId);
+    tab.sessionId = sessionId;
+    tab.lastActivityAt = Date.now();
+    metadataWatcher.registerTab(tab.id, sessionId);
+    saveTabState();
+  });
+  historyWatcher.start();
 
   function saveTabState(): void {
     stateManager.setTabs(Array.from(tabs.values()));
