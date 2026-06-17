@@ -20,21 +20,27 @@ export async function getGitInfo(folder: FolderPath): Promise<GitInfo> {
     worktree: null,
   };
 
-  try {
-    // Check if it's a git repo and get the toplevel
-    await exec('git', ['rev-parse', '--git-dir'], folder);
-  } catch {
+  // Run every probe concurrently rather than sequentially. Spawning `git` is the
+  // expensive part (especially on Windows), so firing them in parallel turns ~5
+  // serial process launches into one batch — the difference between the status bar
+  // updating instantly and lagging for seconds on every tab switch.
+  const [gitDirR, commonDirR, statusR, topLevelR] = await Promise.allSettled([
+    exec('git', ['rev-parse', '--git-dir'], folder),
+    exec('git', ['rev-parse', '--git-common-dir'], folder),
+    exec('git', ['status', '--branch', '--porcelain=v2'], folder),
+    exec('git', ['rev-parse', '--show-toplevel'], folder),
+  ]);
+
+  // If `rev-parse --git-dir` failed, it isn't a git repo.
+  if (gitDirR.status !== 'fulfilled') {
     return empty;
   }
 
   const info: GitInfo = { ...empty, isRepo: true };
 
-  try {
+  if (statusR.status === 'fulfilled') {
     // git status --branch --porcelain=v2 gives us branch + dirty in one call
-    const status = await exec('git', ['status', '--branch', '--porcelain=v2'], folder);
-    const lines = status.split('\n');
-
-    for (const line of lines) {
+    for (const line of statusR.value.split('\n')) {
       // # branch.head <name>
       if (line.startsWith('# branch.head ')) {
         info.branch = line.slice('# branch.head '.length);
@@ -52,26 +58,16 @@ export async function getGitInfo(folder: FolderPath): Promise<GitInfo> {
         info.dirty = true;
       }
     }
-  } catch {
-    // git status failed, we still know it's a repo
   }
 
-  try {
-    // Detect if we're in a worktree (not the main working tree)
-    const commonDir = await exec('git', ['rev-parse', '--git-common-dir'], folder);
-    const gitDir = await exec('git', ['rev-parse', '--git-dir'], folder);
-    // If git-dir !== git-common-dir, we're in a linked worktree
-    // Normalize paths for comparison
-    const normCommon = commonDir.replace(/\\/g, '/').replace(/\/+$/, '');
-    const normGit = gitDir.replace(/\\/g, '/').replace(/\/+$/, '');
+  // Detect if we're in a linked worktree (git-dir !== git-common-dir).
+  if (commonDirR.status === 'fulfilled' && topLevelR.status === 'fulfilled') {
+    const normCommon = commonDirR.value.replace(/\\/g, '/').replace(/\/+$/, '');
+    const normGit = gitDirR.value.replace(/\\/g, '/').replace(/\/+$/, '');
     if (normGit !== normCommon) {
-      // Extract worktree name from the folder basename
-      const toplevel = await exec('git', ['rev-parse', '--show-toplevel'], folder);
-      const parts = toplevel.replace(/\\/g, '/').split('/');
+      const parts = topLevelR.value.replace(/\\/g, '/').split('/');
       info.worktree = parts[parts.length - 1];
     }
-  } catch {
-    // Not critical
   }
 
   return info;
