@@ -87,6 +87,10 @@ export class TerminalManager {
       fontSize: 14,
       fontFamily: this.fontFamily,
       theme: this.currentTheme === 'light' ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME,
+      // Generous scrollback: xterm clears the selection when selected rows
+      // are trimmed out of scrollback, which made copy flaky during
+      // long streaming output (#59)
+      scrollback: 10000,
     });
 
     const fitAddon = new FitAddon();
@@ -123,19 +127,24 @@ export class TerminalManager {
         return false;
       }
 
-      // Ctrl+C: copy if selection exists
-      if (e.ctrlKey && e.key === 'c') {
+      // Ctrl+C / Ctrl+Shift+C: copy if selection exists.
+      // key.toLowerCase() so CapsLock ('C' without shift) still matches (#59)
+      if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'c') {
         const selection = terminal.getSelection();
         if (selection) {
+          // preventDefault so the native copy command and the Edit menu
+          // accelerator can't race our clipboard write (#59)
+          e.preventDefault();
           window.codeherd.clipboardWrite(selection);
           terminal.clearSelection();
           return false; // Don't send to PTY
         }
+        if (e.shiftKey) return false; // Ctrl+Shift+C never sends to PTY
         return true; // No selection, send SIGINT normally
       }
 
-      // Ctrl+V: paste from clipboard
-      if (e.ctrlKey && e.key === 'v') {
+      // Ctrl+V / Ctrl+Shift+V: paste from clipboard
+      if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'v') {
         e.preventDefault(); // Prevent native paste (would double-paste)
         window.codeherd.clipboardRead().then((text) => {
           if (text) {
@@ -147,26 +156,23 @@ export class TerminalManager {
         return false;
       }
 
-      // Ctrl+Shift+C: always copy
-      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
-        const selection = terminal.getSelection();
-        if (selection) {
-          window.codeherd.clipboardWrite(selection);
-          terminal.clearSelection();
-        }
-        return false;
-      }
-
       return true;
     });
 
-    // Right-click: copy selection
+    // Right-click: copy selection if there is one, otherwise paste
+    // (Windows Terminal convention — gives a reliable copy/paste path, #59)
     element.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const selection = terminal.getSelection();
       if (selection) {
         window.codeherd.clipboardWrite(selection);
         terminal.clearSelection();
+      } else {
+        window.codeherd.clipboardRead().then((text) => {
+          if (text) {
+            terminal.paste(text);
+          }
+        });
       }
     });
 
