@@ -130,12 +130,16 @@ export class TerminalManager {
       // Ctrl+C / Ctrl+Shift+C: copy if selection exists.
       // key.toLowerCase() so CapsLock ('C' without shift) still matches (#59)
       if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'c') {
-        const selection = terminal.getSelection();
-        if (selection) {
+        // Gate on hasSelection() rather than the extracted text so an active
+        // selection can never degrade into a surprise SIGINT (#59)
+        if (terminal.hasSelection()) {
           // preventDefault so the native copy command and the Edit menu
           // accelerator can't race our clipboard write (#59)
           e.preventDefault();
-          window.codeherd.clipboardWrite(selection);
+          const selection = terminal.getSelection();
+          if (selection) {
+            window.codeherd.clipboardWrite(selection);
+          }
           terminal.clearSelection();
           return false; // Don't send to PTY
         }
