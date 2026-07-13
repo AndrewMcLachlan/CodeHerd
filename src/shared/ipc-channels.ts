@@ -11,6 +11,7 @@ export const IPC = {
   STATE_GET: 'state:get',
   CLIPBOARD_WRITE: 'clipboard:write',
   CLIPBOARD_READ: 'clipboard:read',
+  CLIPBOARD_HAS_IMAGE: 'clipboard:has-image',
   GIT_INFO: 'git:info',
   SIDEBAR_STATE: 'sidebar:state',
   RECENTLY_CLOSED: 'recently-closed:save',

@@ -257,6 +257,12 @@ export function registerIpcHandlers(
     return clipboard.readText();
   });
 
+  ipcMain.handle(IPC.CLIPBOARD_HAS_IMAGE, async (): Promise<boolean> => {
+    // readImage (not availableFormats) so Windows delayed clipboard
+    // rendering is forced to resolve
+    return !clipboard.readImage().isEmpty();
+  });
+
   ipcMain.handle(IPC.GIT_INFO, async (_event, { folder }: { folder: string }) => {
     return getGitInfo(folder);
   });

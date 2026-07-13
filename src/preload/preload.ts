@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.invoke(IPC.CLIPBOARD_WRITE, text),
   clipboardRead: (): Promise<string> =>
     ipcRenderer.invoke(IPC.CLIPBOARD_READ),
+  clipboardHasImage: (): Promise<boolean> =>
+    ipcRenderer.invoke(IPC.CLIPBOARD_HAS_IMAGE),
   getGitInfo: (folder: string): Promise<GitInfo> =>
     ipcRenderer.invoke(IPC.GIT_INFO, { folder }),
   saveSidebarState: (sidebar: { width: number; collapsed: boolean }): Promise<void> =>
