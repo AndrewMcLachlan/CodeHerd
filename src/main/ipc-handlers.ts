@@ -204,8 +204,11 @@ export function registerIpcHandlers(
         tab.status = 'running';
         safeSend(IPC.TAB_STATUS, { tabId, status: 'running' });
       } else if (tab.status === 'attention') {
-        // Ignore arrow keys / escape sequences (cursor navigation in selection prompts)
-        const isNavKey = /^\x1b\[/.test(data) || data === '\x1b';
+        // Ignore cursor sequences (arrow-key navigation in selection prompts),
+        // both CSI (ESC[A) and SS3 (ESC OA) forms. A bare Escape is not
+        // navigation — it dismisses the prompt or screen (e.g. /usage),
+        // so it must clear the attention status (#56)
+        const isNavKey = /^\x1b[\[O]./.test(data);
         if (!isNavKey) {
           tab.status = 'waiting';
           safeSend(IPC.TAB_STATUS, { tabId, status: 'waiting' });
