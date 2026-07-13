@@ -139,7 +139,9 @@ export class TerminalManager {
         e.preventDefault(); // Prevent native paste (would double-paste)
         window.codeherd.clipboardRead().then((text) => {
           if (text) {
-            window.codeherd.inputToTab(ref.tabId, text);
+            // paste() normalizes newlines and wraps in bracketed-paste
+            // markers so multi-line pastes arrive as one block (#71)
+            terminal.paste(text);
           }
         });
         return false;
