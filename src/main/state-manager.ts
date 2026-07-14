@@ -1,7 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { STATE_DIR, STATE_FILE, DEFAULT_APP_STATE, DEFAULT_PREFERENCES } from '../shared/constants';
+import { app } from 'electron';
+import { STATE_DIR, DEFAULT_APP_STATE, DEFAULT_PREFERENCES } from '../shared/constants';
 import type { AppState, TabState, TabId, RecentlyClosedTab, Preferences } from '../shared/types';
+
+// Dev runs use ~/.codeherd-dev so they never touch the installed app's
+// settings (parallel to the userData split in main.ts)
+const stateDir = app.isPackaged ? STATE_DIR : `${STATE_DIR}-dev`;
+const stateFile = path.join(stateDir, 'state.json');
 
 export class StateManager {
   private state: AppState;
@@ -12,9 +18,9 @@ export class StateManager {
 
   private load(): AppState {
     try {
-      fs.mkdirSync(STATE_DIR, { recursive: true });
-      if (fs.existsSync(STATE_FILE)) {
-        const raw = fs.readFileSync(STATE_FILE, 'utf-8');
+      fs.mkdirSync(stateDir, { recursive: true });
+      if (fs.existsSync(stateFile)) {
+        const raw = fs.readFileSync(stateFile, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed.version === 1) {
           // Merge in defaults for any fields added after the state file was created
@@ -33,10 +39,10 @@ export class StateManager {
 
   save(): void {
     try {
-      fs.mkdirSync(STATE_DIR, { recursive: true });
-      const tmpFile = STATE_FILE + '.tmp';
+      fs.mkdirSync(stateDir, { recursive: true });
+      const tmpFile = stateFile + '.tmp';
       fs.writeFileSync(tmpFile, JSON.stringify(this.state, null, 2), 'utf-8');
-      fs.renameSync(tmpFile, STATE_FILE);
+      fs.renameSync(tmpFile, stateFile);
     } catch (err) {
       console.error('Failed to save state:', err);
     }
