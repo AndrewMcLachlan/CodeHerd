@@ -27,7 +27,17 @@
         </div>
         <div id="sidebar-resize"></div>
       </div>
-      <div id="terminal-container"></div>
+      <div id="terminal-container">
+        <div id="find-bar" class="hidden">
+          <input id="find-input" type="text" placeholder="Find" spellcheck="false" autocomplete="off">
+          <span id="find-count"></span>
+          <button id="find-case" class="find-btn" title="Match case">Aa</button>
+          <button id="find-word" class="find-btn find-btn-word" title="Match whole word">ab</button>
+          <button id="find-prev" class="find-btn" title="Previous match (Shift+Enter)">&#x2191;</button>
+          <button id="find-next" class="find-btn" title="Next match (Enter)">&#x2193;</button>
+          <button id="find-close" class="find-btn" title="Close (Esc)">&#x00d7;</button>
+        </div>
+      </div>
     </div>
     <div id="status-bar" class="hidden">
       <div id="status-left">

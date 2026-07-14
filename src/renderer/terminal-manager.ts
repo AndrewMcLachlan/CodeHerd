@@ -1,5 +1,6 @@
 import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { TabId, ResolvedTheme } from '../shared/types';
 
@@ -52,6 +53,7 @@ const LIGHT_TERMINAL_THEME: ITheme = {
 interface TerminalEntry {
   terminal: Terminal;
   fitAddon: FitAddon;
+  searchAddon: SearchAddon;
   element: HTMLDivElement;
   /** Mutable reference so closures always see the current tab ID */
   ref: { tabId: TabId };
@@ -95,6 +97,8 @@ export class TerminalManager {
 
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
+    const searchAddon = new SearchAddon();
+    terminal.loadAddon(searchAddon);
     terminal.loadAddon(new WebLinksAddon((_event, url) => {
       window.codeherd.openExternal(url);
     }));
@@ -108,9 +112,10 @@ export class TerminalManager {
       // Let F11 (fullscreen toggle) pass through to Electron menu
       if (e.key === 'F11') return false;
 
-      // Let Ctrl/Cmd+T, Ctrl/Cmd+W, Ctrl/Cmd+B, Ctrl/Cmd+, pass through to menu/renderer
+      // Let Ctrl/Cmd+T, Ctrl/Cmd+W, Ctrl/Cmd+B, Ctrl/Cmd+F, Ctrl/Cmd+, pass through to menu/renderer
+      // (Ctrl/Cmd+F opens the find-in-session bar, #72)
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-        if (e.key === 't' || e.key === 'w' || e.key === 'b' || e.key === ',') {
+        if (e.key === 't' || e.key === 'w' || e.key === 'b' || e.key === 'f' || e.key === ',') {
           return false;
         }
       }
@@ -234,7 +239,7 @@ export class TerminalManager {
       }
     });
 
-    this.terminals.set(tabId, { terminal, fitAddon, element, ref });
+    this.terminals.set(tabId, { terminal, fitAddon, searchAddon, element, ref });
 
     return terminal;
   }
@@ -278,6 +283,16 @@ export class TerminalManager {
 
   has(tabId: TabId): boolean {
     return this.terminals.has(tabId);
+  }
+
+  /** Get the search addon for a terminal (find-in-session, #72) */
+  getSearchAddon(tabId: TabId): SearchAddon | null {
+    return this.terminals.get(tabId)?.searchAddon ?? null;
+  }
+
+  /** Move keyboard focus to a terminal (e.g. when the find bar closes) */
+  focus(tabId: TabId): void {
+    this.terminals.get(tabId)?.terminal.focus();
   }
 
   setFontFamily(font: string): void {

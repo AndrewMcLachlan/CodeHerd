@@ -1,6 +1,7 @@
 import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo, Preferences, TabMetadataMessage } from '../shared/types';
 import { TerminalManager } from './terminal-manager';
 import { TabManager } from './tab-manager';
+import { FindBar } from './find-bar';
 import { Sidebar } from './sidebar';
 import { StatusBar } from './status-bar';
 import { AppMenu } from './menu-bar';
@@ -71,6 +72,7 @@ async function init(): Promise<void> {
   const tabManager = new TabManager(terminalManager);
   const sidebar = new Sidebar(sidebarState.width, sidebarState.collapsed);
   const statusBar = new StatusBar();
+  const findBar = new FindBar(terminalManager);
 
   // Set app icon
   (document.getElementById('app-menu-icon') as HTMLImageElement).src = './menu-icon.png';
@@ -105,6 +107,7 @@ async function init(): Promise<void> {
   });
 
   tabManager.setOnAllTabsClosed(() => {
+    findBar.hide();
     sidebar.clear();
     statusBar.update(null, null);
   });
@@ -173,6 +176,7 @@ async function init(): Promise<void> {
 
   // When switching tabs, update sidebar and status bar
   tabManager.setOnTabSwitch((tab) => {
+    findBar.hide();
     sidebar.loadSessionsForFolder(tab.launchFolder);
     statusBar.update(tab.launchFolder, tab.id);
   });
@@ -275,6 +279,15 @@ async function init(): Promise<void> {
     if (modKey(e) && e.key === 'b') {
       e.preventDefault();
       sidebar.toggle();
+    }
+    // Ctrl/Cmd+F: open find bar for the active terminal (refocuses the
+    // input if already open)
+    if (modKey(e) && e.key === 'f') {
+      e.preventDefault();
+      const active = tabManager.getActiveTab();
+      if (active && terminalManager.has(active.id)) {
+        findBar.open(active.id);
+      }
     }
     // Ctrl+Tab / Ctrl+Shift+Tab: cycle through tabs
     if (e.ctrlKey && e.key === 'Tab') {
