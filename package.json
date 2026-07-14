@@ -33,12 +33,12 @@
     "@electron-forge/maker-deb": "^7.11.2",
     "@electron-forge/maker-dmg": "^7.11.2",
     "@electron-forge/maker-zip": "^7.11.2",
-    "@electron/rebuild": "^4.1.0",
-    "@types/node": "^26.1.0",
-    "electron": "^43.0.0",
+    "@electron/rebuild": "^4.2.0",
+    "@types/node": "^26.1.1",
+    "electron": "^43.1.0",
     "esbuild": "^0.28.1",
-    "tsx": "^4.23.0",
-    "typescript": "^6.0.3"
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2"
   },
   "overrides": {
     "node-abi@<3.92.0": "3.92.0"
