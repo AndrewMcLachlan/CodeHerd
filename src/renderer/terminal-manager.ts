@@ -87,6 +87,10 @@ export class TerminalManager {
       fontSize: 14,
       fontFamily: this.fontFamily,
       theme: this.currentTheme === 'light' ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME,
+      // Generous scrollback: xterm clears the selection when selected rows
+      // are trimmed out of scrollback, which made copy flaky during
+      // long streaming output (#59)
+      scrollback: 10000,
     });
 
     const fitAddon = new FitAddon();
@@ -123,48 +127,87 @@ export class TerminalManager {
         return false;
       }
 
-      // Ctrl+C: copy if selection exists
-      if (e.ctrlKey && e.key === 'c') {
-        const selection = terminal.getSelection();
-        if (selection) {
-          window.codeherd.clipboardWrite(selection);
+      // Ctrl+C / Ctrl+Shift+C: copy if selection exists.
+      // key.toLowerCase() so CapsLock ('C' without shift) still matches (#59)
+      if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'c') {
+        // Gate on hasSelection() rather than the extracted text so an active
+        // selection can never degrade into a surprise SIGINT (#59)
+        if (terminal.hasSelection()) {
+          // preventDefault so the native copy command and the Edit menu
+          // accelerator can't race our clipboard write (#59)
+          e.preventDefault();
+          const selection = terminal.getSelection();
+          if (selection) {
+            window.codeherd.clipboardWrite(selection);
+          }
           terminal.clearSelection();
           return false; // Don't send to PTY
         }
+        if (e.shiftKey) return false; // Ctrl+Shift+C never sends to PTY
         return true; // No selection, send SIGINT normally
       }
 
-      // Ctrl+V: paste from clipboard
-      if (e.ctrlKey && e.key === 'v') {
+      // Ctrl+V / Ctrl+Shift+V: paste from clipboard
+      if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'v') {
         e.preventDefault(); // Prevent native paste (would double-paste)
-        window.codeherd.clipboardRead().then((text) => {
+        window.codeherd.clipboardRead().then(async (text) => {
           if (text) {
-            window.codeherd.inputToTab(ref.tabId, text);
+            // paste() normalizes newlines and wraps in bracketed-paste
+            // markers so multi-line pastes arrive as one block (#71)
+            terminal.paste(text);
+          } else if (await window.codeherd.clipboardHasImage()) {
+            // No text but an image on the clipboard: forward Claude Code's
+            // image-paste shortcut (Alt+V = ESC v) so Ctrl+V muscle memory
+            // works for screenshots too
+            window.codeherd.inputToTab(ref.tabId, '\x1bv');
           }
         });
         return false;
       }
 
-      // Ctrl+Shift+C: always copy
-      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
-        const selection = terminal.getSelection();
-        if (selection) {
-          window.codeherd.clipboardWrite(selection);
-          terminal.clearSelection();
-        }
+      // Alt+V: Claude Code's image-paste shortcut on Windows. Snipping Tool
+      // publishes the capture to the clipboard slightly after its toast
+      // (delayed rendering), so Claude Code's first read often finds no
+      // image. Hold the keystroke until an image is actually readable
+      // (short poll), then forward it; forward anyway on timeout so Claude
+      // Code can show its own message.
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        (async () => {
+          for (let i = 0; i < 15; i++) {
+            if (await window.codeherd.clipboardHasImage()) break;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          window.codeherd.inputToTab(ref.tabId, '\x1bv');
+        })();
+        return false;
+      }
+
+      // Ctrl+Z: translate to Claude Code's undo binding (Ctrl+_, 0x1F) so
+      // an accidental paste can be undone. Also keeps Ctrl+Z from reaching
+      // the shell as SIGTSTP on macOS/Linux.
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        window.codeherd.inputToTab(ref.tabId, '\x1f');
         return false;
       }
 
       return true;
     });
 
-    // Right-click: copy selection
+    // Right-click: copy selection if there is one, otherwise paste
+    // (Windows Terminal convention — gives a reliable copy/paste path, #59)
     element.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const selection = terminal.getSelection();
       if (selection) {
         window.codeherd.clipboardWrite(selection);
         terminal.clearSelection();
+      } else {
+        window.codeherd.clipboardRead().then((text) => {
+          if (text) {
+            terminal.paste(text);
+          }
+        });
       }
     });
 

@@ -21,6 +21,7 @@ declare global {
       getState: () => Promise<AppState>;
       clipboardWrite: (text: string) => Promise<void>;
       clipboardRead: () => Promise<string>;
+      clipboardHasImage: () => Promise<boolean>;
       getGitInfo: (folder: string) => Promise<GitInfo>;
       saveSidebarState: (sidebar: { width: number; collapsed: boolean }) => Promise<void>;
       saveRecentlyClosed: (items: { folder: string; sessionId: string; label: string; closedAt: number }[]) => Promise<void>;
