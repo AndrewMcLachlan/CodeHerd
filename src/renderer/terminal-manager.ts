@@ -150,13 +150,44 @@ export class TerminalManager {
       // Ctrl+V / Ctrl+Shift+V: paste from clipboard
       if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'v') {
         e.preventDefault(); // Prevent native paste (would double-paste)
-        window.codeherd.clipboardRead().then((text) => {
+        window.codeherd.clipboardRead().then(async (text) => {
           if (text) {
             // paste() normalizes newlines and wraps in bracketed-paste
             // markers so multi-line pastes arrive as one block (#71)
             terminal.paste(text);
+          } else if (await window.codeherd.clipboardHasImage()) {
+            // No text but an image on the clipboard: forward Claude Code's
+            // image-paste shortcut (Alt+V = ESC v) so Ctrl+V muscle memory
+            // works for screenshots too
+            window.codeherd.inputToTab(ref.tabId, '\x1bv');
           }
         });
+        return false;
+      }
+
+      // Alt+V: Claude Code's image-paste shortcut on Windows. Snipping Tool
+      // publishes the capture to the clipboard slightly after its toast
+      // (delayed rendering), so Claude Code's first read often finds no
+      // image. Hold the keystroke until an image is actually readable
+      // (short poll), then forward it; forward anyway on timeout so Claude
+      // Code can show its own message.
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        (async () => {
+          for (let i = 0; i < 15; i++) {
+            if (await window.codeherd.clipboardHasImage()) break;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          window.codeherd.inputToTab(ref.tabId, '\x1bv');
+        })();
+        return false;
+      }
+
+      // Ctrl+Z: translate to Claude Code's undo binding (Ctrl+_, 0x1F) so
+      // an accidental paste can be undone. Also keeps Ctrl+Z from reaching
+      // the shell as SIGTSTP on macOS/Linux.
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        window.codeherd.inputToTab(ref.tabId, '\x1f');
         return false;
       }
 
