@@ -1,7 +1,18 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import * as readline from 'readline';
-import { CLAUDE_HISTORY_FILE } from '../shared/constants';
+import { CLAUDE_HISTORY_FILE, CLAUDE_PROJECTS_DIR } from '../shared/constants';
 import type { ClaudeSession, FolderPath } from '../shared/types';
+
+interface SessionAccumulator {
+  /** Most recent prompt that isn't a slash command */
+  lastMeaningfulPrompt: string | null;
+  /** Most recent prompt of any kind (fallback label) */
+  lastPrompt: string | null;
+  timestamp: number;
+  /** Project path as Claude Code recorded it (used to locate the transcript dir) */
+  rawProject: string;
+}
 
 export class SessionTracker {
   async getSessionsForFolder(folder: FolderPath): Promise<ClaudeSession[]> {
@@ -9,7 +20,7 @@ export class SessionTracker {
       return [];
     }
 
-    const sessions = new Map<string, ClaudeSession>();
+    const accumulators = new Map<string, SessionAccumulator>();
 
     const stream = fs.createReadStream(CLAUDE_HISTORY_FILE, { encoding: 'utf-8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
@@ -23,19 +34,82 @@ export class SessionTracker {
         const targetFolder = folder.replace(/\\/g, '/').toLowerCase();
 
         if (entryProject === targetFolder && entry.sessionId) {
-          sessions.set(entry.sessionId, {
-            sessionId: entry.sessionId,
-            project: entry.project || folder,
-            lastPrompt: entry.display || entry.prompt || '(no prompt)',
-            timestamp: entry.timestamp || 0,
-          });
+          const acc = accumulators.get(entry.sessionId) ?? {
+            lastMeaningfulPrompt: null,
+            lastPrompt: null,
+            timestamp: 0,
+            rawProject: entry.project || folder,
+          };
+          const display = (entry.display || entry.prompt || '').trim();
+          if (display) {
+            acc.lastPrompt = display;
+            // Slash commands like /exit or /clear make useless labels —
+            // prefer the last real prompt (#70)
+            if (!display.startsWith('/')) {
+              acc.lastMeaningfulPrompt = display;
+            }
+          }
+          acc.timestamp = entry.timestamp || acc.timestamp;
+          accumulators.set(entry.sessionId, acc);
         }
       } catch {
         // Skip malformed lines
       }
     }
 
+    // History entries outlive Claude Code's transcript cleanup, so drop any
+    // session whose transcript is gone or holds no conversation — those
+    // can't be resumed (#70)
+    const sessions: ClaudeSession[] = [];
+    for (const [sessionId, acc] of accumulators) {
+      const transcript = path.join(
+        CLAUDE_PROJECTS_DIR,
+        acc.rawProject.replace(/[^a-zA-Z0-9]/g, '-'),
+        `${sessionId}.jsonl`,
+      );
+      if (!(await this.isResumable(transcript))) continue;
+      sessions.push({
+        sessionId,
+        project: acc.rawProject,
+        lastPrompt: acc.lastMeaningfulPrompt || acc.lastPrompt || '(no prompt)',
+        timestamp: acc.timestamp,
+      });
+    }
+
     // Sort by timestamp descending (most recent first)
-    return Array.from(sessions.values()).sort((a, b) => b.timestamp - a.timestamp);
+    return sessions.sort((a, b) => b.timestamp - a.timestamp);
+  }
+
+  /**
+   * A session can only be resumed if its transcript exists and contains at
+   * least one user message — transcripts holding only metadata entries
+   * (e.g. from /rename or /color) have no conversation to restore.
+   */
+  private async isResumable(transcriptPath: string): Promise<boolean> {
+    const NEEDLE = '"type":"user"';
+    let handle: fs.promises.FileHandle;
+    try {
+      handle = await fs.promises.open(transcriptPath, 'r');
+    } catch {
+      return false;
+    }
+    try {
+      const buf = Buffer.alloc(64 * 1024);
+      let carry = '';
+      let position = 0;
+      for (;;) {
+        const { bytesRead } = await handle.read(buf, 0, buf.length, position);
+        if (bytesRead === 0) return false;
+        const text = carry + buf.toString('utf-8', 0, bytesRead);
+        if (text.includes(NEEDLE)) return true;
+        // Keep the tail in case the needle straddles a chunk boundary
+        carry = text.slice(-NEEDLE.length);
+        position += bytesRead;
+      }
+    } catch {
+      return false;
+    } finally {
+      await handle.close();
+    }
   }
 }
