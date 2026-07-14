@@ -204,8 +204,11 @@ export function registerIpcHandlers(
         tab.status = 'running';
         safeSend(IPC.TAB_STATUS, { tabId, status: 'running' });
       } else if (tab.status === 'attention') {
-        // Ignore arrow keys / escape sequences (cursor navigation in selection prompts)
-        const isNavKey = /^\x1b\[/.test(data) || data === '\x1b';
+        // Ignore cursor sequences (arrow-key navigation in selection prompts),
+        // both CSI (ESC[A) and SS3 (ESC OA) forms. A bare Escape is not
+        // navigation — it dismisses the prompt or screen (e.g. /usage),
+        // so it must clear the attention status (#56)
+        const isNavKey = /^\x1b[\[O]./.test(data);
         if (!isNavKey) {
           tab.status = 'waiting';
           safeSend(IPC.TAB_STATUS, { tabId, status: 'waiting' });
@@ -242,11 +245,25 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle(IPC.CLIPBOARD_WRITE, async (_event, text: string): Promise<void> => {
-    clipboard.writeText(text);
+    // The Win32 clipboard is a global lock, and writes silently fail when a
+    // clipboard listener (Windows clipboard history, Ditto, PowerToys, ...)
+    // happens to hold it. Verify the write landed and retry briefly (#59)
+    for (let attempt = 0; attempt < 5; attempt++) {
+      clipboard.writeText(text);
+      if (clipboard.readText() === text) return;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    console.warn('clipboard write failed after retries');
   });
 
   ipcMain.handle(IPC.CLIPBOARD_READ, async (): Promise<string> => {
     return clipboard.readText();
+  });
+
+  ipcMain.handle(IPC.CLIPBOARD_HAS_IMAGE, async (): Promise<boolean> => {
+    // readImage (not availableFormats) so Windows delayed clipboard
+    // rendering is forced to resolve
+    return !clipboard.readImage().isEmpty();
   });
 
   ipcMain.handle(IPC.GIT_INFO, async (_event, { folder }: { folder: string }) => {

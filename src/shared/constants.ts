@@ -1,8 +1,9 @@
 import * as path from 'path';
 import * as os from 'os';
 
+// Base settings dir for the packaged app; dev runs append '-dev'
+// (see state-manager.ts) so they never touch real settings
 export const STATE_DIR = path.join(os.homedir(), '.codeherd');
-export const STATE_FILE = path.join(STATE_DIR, 'state.json');
 export const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 export const CLAUDE_HISTORY_FILE = path.join(CLAUDE_DIR, 'history.jsonl');
 export const CLAUDE_PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
