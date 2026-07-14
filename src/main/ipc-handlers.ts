@@ -28,7 +28,7 @@ export function registerIpcHandlers(
   stateManager: StateManager,
   getMainWindow: () => BrowserWindow | null,
   isQuitting: () => boolean,
-  onRecentlyClosedChanged?: (items: RecentlyClosedTab[]) => void,
+  rebuildMenu?: (items?: RecentlyClosedTab[]) => void,
 ): void {
   const tabs = new Map<string, TabState>();
   const sessionTracker = new SessionTracker();
@@ -278,7 +278,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.RECENTLY_CLOSED, async (_event, items: RecentlyClosedTab[]) => {
     stateManager.setRecentlyClosed(items);
     stateManager.save();
-    onRecentlyClosedChanged?.(items);
+    rebuildMenu?.(items);
   });
 
   ipcMain.handle(IPC.THEME_GET_RESOLVED, async () => {
@@ -322,6 +322,11 @@ export function registerIpcHandlers(
     stateManager.setPreferences(prefs);
     stateManager.save();
     safeSend('preferences:changed', prefs);
+
+    if (prefs.newTabShortcut !== oldPrefs.newTabShortcut) {
+      // Re-register the New Tab accelerator with the new binding
+      rebuildMenu?.();
+    }
 
     if (prefs.theme !== oldPrefs.theme) {
       nativeTheme.themeSource = prefs.theme === 'system' ? 'system' : prefs.theme;
@@ -394,7 +399,7 @@ export function registerIpcHandlers(
         const prefsColors = getThemeColors(resolveTheme(stateManager.getPreferences().theme));
         prefsWin = new BrowserWindow({
           width: 480,
-          height: 450,
+          height: 540,
           resizable: false,
           minimizable: false,
           maximizable: false,

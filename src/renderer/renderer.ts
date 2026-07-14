@@ -1,4 +1,4 @@
-import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo, Preferences, TabMetadataMessage } from '../shared/types';
+import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo, Preferences, NewTabShortcut, TabMetadataMessage } from '../shared/types';
 import { TerminalManager } from './terminal-manager';
 import { TabManager } from './tab-manager';
 import { Sidebar } from './sidebar';
@@ -79,6 +79,26 @@ async function init(): Promise<void> {
   if (isMac) document.documentElement.dataset.platform = 'mac';
   const mod = isMac ? '\u2318' : 'Ctrl+';
 
+  // Configurable New Tab shortcut (#69). 'none' leaves Ctrl+T for Claude Code.
+  let newTabShortcut: NewTabShortcut = 'Ctrl+T';
+  const newTabShortcutLabel = (): string | undefined => {
+    if (newTabShortcut === 'none') return undefined;
+    if (newTabShortcut === 'Ctrl+Shift+T') return isMac ? '\u21e7\u2318T' : 'Ctrl+Shift+T';
+    return `${mod}${newTabShortcut.slice('Ctrl+'.length)}`;
+  };
+  const applyNewTabShortcut = (shortcut: NewTabShortcut | undefined) => {
+    newTabShortcut = shortcut ?? 'Ctrl+T';
+    terminalManager.setNewTabShortcut(newTabShortcut);
+    const label = newTabShortcutLabel();
+    document.getElementById('new-tab-btn')!.title = label ? `New Tab (${label})` : 'New Tab';
+  };
+  const matchesNewTabShortcut = (e: KeyboardEvent): boolean => {
+    if (newTabShortcut === 'none') return false;
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return false;
+    if (e.shiftKey !== (newTabShortcut === 'Ctrl+Shift+T')) return false;
+    return e.key.toLowerCase() === (newTabShortcut === 'Ctrl+N' ? 'n' : 't');
+  };
+
   // Track recently closed tabs (loaded from persisted state)
   const recentlyClosed: { folder: string; sessionId: string; label: string; closedAt: number }[] =
     [...(state.recentlyClosed || [])];
@@ -111,7 +131,7 @@ async function init(): Promise<void> {
 
   new AppMenu(() => {
     const items: MenuItem[] = [
-      { label: 'New Tab', shortcut: `${mod}T`, action: () => tabManager.openNewTab() },
+      { label: 'New Tab', shortcut: newTabShortcutLabel(), action: () => tabManager.openNewTab() },
       { label: 'Close Tab', shortcut: `${mod}W`, action: () => {
         const active = tabManager.getActiveTab();
         if (active) tabManager.closeTab(active.id);
@@ -231,12 +251,13 @@ async function init(): Promise<void> {
   });
 
   // Apply preferences
-  const prefs = state.preferences ?? { warnBeforeClosingTabs: true, fontFamily: '', theme: 'dark' as const, tabSwitchMode: 'mru' as const };
+  const prefs = state.preferences ?? { warnBeforeClosingTabs: true, fontFamily: '', theme: 'dark' as const, tabSwitchMode: 'mru' as const, newTabShortcut: 'Ctrl+T' as const };
   if (prefs.fontFamily) {
     terminalManager.setFontFamily(prefs.fontFamily);
   }
   tabManager.setWarnBeforeClose(prefs.warnBeforeClosingTabs);
   tabManager.setTabSwitchMode(prefs.tabSwitchMode ?? 'mru');
+  applyNewTabShortcut(prefs.newTabShortcut);
 
   // Apply initial theme
   const resolvedTheme = await window.codeherd.getResolvedTheme();
@@ -247,6 +268,7 @@ async function init(): Promise<void> {
     terminalManager.setFontFamily(newPrefs.fontFamily);
     tabManager.setWarnBeforeClose(newPrefs.warnBeforeClosingTabs);
     tabManager.setTabSwitchMode(newPrefs.tabSwitchMode ?? 'mru');
+    applyNewTabShortcut(newPrefs.newTabShortcut);
   });
 
   // Listen for theme changes (from preferences save or OS theme change)
@@ -258,8 +280,8 @@ async function init(): Promise<void> {
   // Keyboard shortcuts (fallback for when menu accelerators don't fire)
   const modKey = (e: KeyboardEvent) => e.ctrlKey || e.metaKey;
   document.addEventListener('keydown', (e) => {
-    // Ctrl/Cmd+T: new tab
-    if (modKey(e) && e.key === 't') {
+    // New tab (configurable, default Ctrl/Cmd+T — see #69)
+    if (matchesNewTabShortcut(e)) {
       e.preventDefault();
       tabManager.openNewTab();
     }

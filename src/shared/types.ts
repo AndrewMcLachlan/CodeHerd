@@ -28,11 +28,19 @@ export type ResolvedTheme = 'light' | 'dark';
 
 export type TabSwitchMode = 'mru' | 'sequential';
 
+/**
+ * Configurable New Tab shortcut. Ctrl+T has meaning inside Claude Code
+ * (show/hide sub-agent tasks), so users can remap or disable it ('none'),
+ * in which case Ctrl+T is sent to the terminal instead (#69).
+ */
+export type NewTabShortcut = 'Ctrl+T' | 'Ctrl+Shift+T' | 'Ctrl+N' | 'none';
+
 export interface Preferences {
   warnBeforeClosingTabs: boolean;
   fontFamily: string;
   theme: ThemePreference;
   tabSwitchMode: TabSwitchMode;
+  newTabShortcut: NewTabShortcut;
 }
 
 export interface AppState {

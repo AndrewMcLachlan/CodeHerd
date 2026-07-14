@@ -1,8 +1,12 @@
 import { Menu, BrowserWindow, app } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import type { RecentlyClosedTab } from '../shared/types';
+import type { NewTabShortcut, RecentlyClosedTab } from '../shared/types';
 
-export function buildAppMenu(getMainWindow: () => BrowserWindow | null, recentlyClosed: RecentlyClosedTab[] = []): Menu {
+export function buildAppMenu(
+  getMainWindow: () => BrowserWindow | null,
+  recentlyClosed: RecentlyClosedTab[] = [],
+  newTabShortcut: NewTabShortcut = 'Ctrl+T',
+): Menu {
   const isMac = process.platform === 'darwin';
 
   // On macOS the menu shows in the system menu bar, so keep it full.
@@ -14,7 +18,11 @@ export function buildAppMenu(getMainWindow: () => BrowserWindow | null, recently
       submenu: [
         {
           label: 'New Tab',
-          accelerator: 'CmdOrCtrl+T',
+          // 'none' registers no accelerator at all so Ctrl+T reaches
+          // Claude Code's show/hide sub-agent tasks toggle (#69)
+          ...(newTabShortcut === 'none'
+            ? {}
+            : { accelerator: newTabShortcut.replace('Ctrl+', 'CmdOrCtrl+') }),
           click: () => {
             getMainWindow()?.webContents.send('menu:open-folder');
           },

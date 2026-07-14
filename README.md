@@ -28,7 +28,7 @@ npm start
 
 | Shortcut | Action |
 |----------|--------|
-| Ctrl/Cmd+T | New tab |
+| Ctrl/Cmd+T | New tab (configurable in Preferences — remap or disable it to send Ctrl+T to Claude Code instead) |
 | Ctrl/Cmd+W | Close tab |
 | Ctrl/Cmd+B | Toggle sidebar |
 | F11 | Toggle fullscreen |
