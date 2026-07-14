@@ -20,6 +20,9 @@ export const IPC = {
   PREFERENCES_SAVE: 'preferences:save',
   THEME_GET_RESOLVED: 'theme:get-resolved',
   SHELL_OPEN_EXTERNAL: 'shell:open-external',
+  UPDATE_DISMISS: 'update:dismiss',
+  UPDATE_GET_SYNC: 'update:get-sync',
+  UPDATE_OPEN: 'update:open',
 
   // Main -> Renderer (send pattern)
   PTY_DATA: 'pty:data',
@@ -28,4 +31,5 @@ export const IPC = {
   TAB_METADATA: 'tab:metadata',
   THEME_CHANGED: 'theme:changed',
   MENU_RESTORE_RECENT: 'menu:restore-recent',
+  UPDATE_AVAILABLE: 'update:available',
 } as const;

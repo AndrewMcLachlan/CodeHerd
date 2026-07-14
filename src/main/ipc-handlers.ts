@@ -11,6 +11,7 @@ import { HistoryWatcher } from './history-watcher';
 import { AgentRegistry } from './agent-registry';
 import { getGitInfo } from './git-info';
 import { detectStatus } from './status-detection';
+import { getAvailableUpdate } from './update-checker';
 
 function resolveTheme(pref: ThemePreference): ResolvedTheme {
   if (pref === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
@@ -333,6 +334,21 @@ export function registerIpcHandlers(
 
   ipcMain.on('about:get-version', (event) => {
     event.returnValue = app.getVersion();
+  });
+
+  ipcMain.handle(IPC.UPDATE_DISMISS, async (_event, version: string) => {
+    stateManager.setDismissedUpdateVersion(version);
+    stateManager.save();
+  });
+
+  // Used by the About window (sendSync) to show any known update
+  ipcMain.on(IPC.UPDATE_GET_SYNC, (event) => {
+    event.returnValue = getAvailableUpdate();
+  });
+
+  ipcMain.on(IPC.UPDATE_OPEN, () => {
+    const update = getAvailableUpdate();
+    if (update) shell.openExternal(update.url);
   });
 
   ipcMain.on('about:open-github', () => {

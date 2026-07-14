@@ -62,6 +62,16 @@ export interface AppState {
   };
   recentlyClosed: RecentlyClosedTab[];
   preferences: Preferences;
+  /** Latest release version the user dismissed the update notification for. */
+  dismissedUpdateVersion: string | null;
+}
+
+/** A newer release discovered on GitHub. */
+export interface UpdateInfo {
+  /** Version number of the latest release (tag with any leading 'v' stripped). */
+  version: string;
+  /** URL of the release page. */
+  url: string;
 }
 
 export interface ClaudeSession {

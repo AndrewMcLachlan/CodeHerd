@@ -37,4 +37,5 @@ export const DEFAULT_APP_STATE = {
   sidebar: DEFAULT_SIDEBAR,
   recentlyClosed: [],
   preferences: DEFAULT_PREFERENCES,
+  dismissedUpdateVersion: null as string | null,
 };

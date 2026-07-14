@@ -75,6 +75,10 @@ export class StateManager {
     this.state.recentlyClosed = items;
   }
 
+  setDismissedUpdateVersion(version: string | null): void {
+    this.state.dismissedUpdateVersion = version;
+  }
+
   getPreferences(): Preferences {
     return this.state.preferences ?? DEFAULT_PREFERENCES;
   }
