@@ -82,11 +82,21 @@ async function build() {
     fs.copyFileSync(menuIconSrc, path.join(outdir, 'menu-icon.png'));
   }
 
-  // Copy xterm.css from node_modules
-  const xtermCss = path.join('node_modules', '@xterm', 'xterm', 'css', 'xterm.css');
-  if (fs.existsSync(xtermCss)) {
-    fs.copyFileSync(xtermCss, path.join(outdir, 'xterm.css'));
+  // Copy xterm.css from the xterm package. index.html hard-links ./xterm.css,
+  // and without it xterm renders unstyled: the helper textarea it normally
+  // hides off-screen becomes a visible, resizable box that displays raw input
+  // (including mouse-tracking reports). Resolve through Node rather than a
+  // literal node_modules path so hoisted/linked layouts work, and fail the
+  // build rather than silently shipping a broken app.
+  let xtermCss: string;
+  try {
+    xtermCss = require.resolve('@xterm/xterm/css/xterm.css');
+  } catch {
+    throw new Error(
+      'Could not resolve @xterm/xterm/css/xterm.css — the renderer would be unstyled. Is node_modules installed and intact?',
+    );
   }
+  fs.copyFileSync(xtermCss, path.join(outdir, 'xterm.css'));
 
   console.log('Build complete.');
 }
