@@ -26,7 +26,7 @@ export class HistoryWatcher {
   private offset = 0;
   private pending: NodeJS.Timeout | null = null;
 
-  constructor(private onEntry: (entry: HistoryEntry) => void) {}
+  constructor(private onEntry: (entry: HistoryEntry) => void | Promise<void>) {}
 
   start(): void {
     if (this.watcher) return;

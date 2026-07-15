@@ -121,6 +121,16 @@ export class Sidebar {
       el.appendChild(prompt);
       el.appendChild(time);
 
+      // A running background agent opens by attaching rather than resuming — say so, so
+      // it's clear why this one behaves differently from the rest of the list.
+      if (session.agentId) {
+        const badge = document.createElement('span');
+        badge.className = 'session-badge';
+        badge.textContent = 'background';
+        badge.title = 'Running as a background agent — opens by attaching to it';
+        time.appendChild(badge);
+      }
+
       el.addEventListener('click', () => {
         if (this.onResumeSession) {
           this.onResumeSession(session);

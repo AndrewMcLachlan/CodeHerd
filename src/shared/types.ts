@@ -56,6 +56,11 @@ export interface AppState {
 
 export interface ClaudeSession {
   sessionId: SessionId;
+  /**
+   * Set only when this session is a *live* background agent, and holds the job id that
+   * `claude attach` takes. Such sessions can't be resumed while the agent is running.
+   */
+  agentId?: string;
   project: FolderPath;
   lastPrompt: string;
   timestamp: number;
