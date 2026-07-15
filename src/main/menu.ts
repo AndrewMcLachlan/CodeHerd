@@ -1,12 +1,16 @@
 import { Menu, BrowserWindow, app } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 import type { NewTabShortcut, RecentlyClosedTab } from '../shared/types';
+import { DEFAULT_NEW_TAB_SHORTCUT, toAccelerator } from '../shared/shortcut';
 
 export function buildAppMenu(
   getMainWindow: () => BrowserWindow | null,
   recentlyClosed: RecentlyClosedTab[] = [],
-  newTabShortcut: NewTabShortcut = 'Ctrl+T',
+  newTabShortcut: NewTabShortcut = DEFAULT_NEW_TAB_SHORTCUT,
 ): Menu {
+  // null for 'none' or any malformed value → register no accelerator, leaving
+  // Ctrl+T free to reach Claude Code's sub-agent tasks toggle (#69)
+  const newTabAccelerator = toAccelerator(newTabShortcut);
   const isMac = process.platform === 'darwin';
 
   // On macOS the menu shows in the system menu bar, so keep it full.
@@ -18,11 +22,7 @@ export function buildAppMenu(
       submenu: [
         {
           label: 'New Tab',
-          // 'none' registers no accelerator at all so Ctrl+T reaches
-          // Claude Code's show/hide sub-agent tasks toggle (#69)
-          ...(newTabShortcut === 'none'
-            ? {}
-            : { accelerator: newTabShortcut.replace('Ctrl+', 'CmdOrCtrl+') }),
+          ...(newTabAccelerator ? { accelerator: newTabAccelerator } : {}),
           click: () => {
             getMainWindow()?.webContents.send('menu:open-folder');
           },

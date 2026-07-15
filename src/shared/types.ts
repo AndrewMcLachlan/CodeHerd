@@ -33,7 +33,9 @@ export type TabSwitchMode = 'mru' | 'sequential';
  * (show/hide sub-agent tasks), so users can remap or disable it ('none'),
  * in which case Ctrl+T is sent to the terminal instead (#69).
  */
-export type NewTabShortcut = 'Ctrl+T' | 'Ctrl+Shift+T' | 'Ctrl+N' | 'none';
+// Canonical shortcut string (e.g. 'Ctrl+T', 'Ctrl+Alt+K', 'F5') or the
+// sentinel 'none' (disabled). See src/shared/shortcut.ts. #69
+export type NewTabShortcut = string;
 
 export interface Preferences {
   warnBeforeClosingTabs: boolean;

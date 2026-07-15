@@ -1,4 +1,5 @@
 import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo, Preferences, NewTabShortcut, TabMetadataMessage } from '../shared/types';
+import { DEFAULT_NEW_TAB_SHORTCUT, formatShortcut, matchesShortcut } from '../shared/shortcut';
 import { TerminalManager } from './terminal-manager';
 import { TabManager } from './tab-manager';
 import { Sidebar } from './sidebar';
@@ -80,24 +81,15 @@ async function init(): Promise<void> {
   const mod = isMac ? '\u2318' : 'Ctrl+';
 
   // Configurable New Tab shortcut (#69). 'none' leaves Ctrl+T for Claude Code.
-  let newTabShortcut: NewTabShortcut = 'Ctrl+T';
-  const newTabShortcutLabel = (): string | undefined => {
-    if (newTabShortcut === 'none') return undefined;
-    if (newTabShortcut === 'Ctrl+Shift+T') return isMac ? '\u21e7\u2318T' : 'Ctrl+Shift+T';
-    return `${mod}${newTabShortcut.slice('Ctrl+'.length)}`;
-  };
+  let newTabShortcut: NewTabShortcut = DEFAULT_NEW_TAB_SHORTCUT;
+  const newTabShortcutLabel = (): string | undefined => formatShortcut(newTabShortcut, isMac);
   const applyNewTabShortcut = (shortcut: NewTabShortcut | undefined) => {
-    newTabShortcut = shortcut ?? 'Ctrl+T';
+    newTabShortcut = shortcut ?? DEFAULT_NEW_TAB_SHORTCUT;
     terminalManager.setNewTabShortcut(newTabShortcut);
     const label = newTabShortcutLabel();
     document.getElementById('new-tab-btn')!.title = label ? `New Tab (${label})` : 'New Tab';
   };
-  const matchesNewTabShortcut = (e: KeyboardEvent): boolean => {
-    if (newTabShortcut === 'none') return false;
-    if (!(e.ctrlKey || e.metaKey) || e.altKey) return false;
-    if (e.shiftKey !== (newTabShortcut === 'Ctrl+Shift+T')) return false;
-    return e.key.toLowerCase() === (newTabShortcut === 'Ctrl+N' ? 'n' : 't');
-  };
+  const matchesNewTabShortcut = (e: KeyboardEvent): boolean => matchesShortcut(newTabShortcut, e);
 
   // Track recently closed tabs (loaded from persisted state)
   const recentlyClosed: { folder: string; sessionId: string; label: string; closedAt: number }[] =

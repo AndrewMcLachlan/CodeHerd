@@ -2,6 +2,7 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { TabId, ResolvedTheme, NewTabShortcut } from '../shared/types';
+import { DEFAULT_NEW_TAB_SHORTCUT, matchesShortcut } from '../shared/shortcut';
 
 const DARK_TERMINAL_THEME: ITheme = {
   background: '#1e1e2e',
@@ -63,7 +64,7 @@ export class TerminalManager {
   private onTitleChangeCallback: ((tabId: TabId, title: string) => void) | null = null;
   private fontFamily = "'Cascadia Code', 'Fira Code', Consolas, monospace";
   private currentTheme: ResolvedTheme = 'dark';
-  private newTabShortcut: NewTabShortcut = 'Ctrl+T';
+  private newTabShortcut: NewTabShortcut = DEFAULT_NEW_TAB_SHORTCUT;
 
   constructor() {
     this.container = document.getElementById('terminal-container')!;
@@ -112,7 +113,7 @@ export class TerminalManager {
       // Let the configured New Tab shortcut pass through to the menu/renderer.
       // When remapped or disabled ('none'), Ctrl+T is NOT intercepted here, so
       // it reaches Claude Code's show/hide sub-agent tasks toggle (#69)
-      if (this.matchesNewTabShortcut(e)) return false;
+      if (matchesShortcut(this.newTabShortcut, e)) return false;
 
       // Let Ctrl/Cmd+W, Ctrl/Cmd+B, Ctrl/Cmd+, pass through to menu/renderer
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
@@ -284,14 +285,6 @@ export class TerminalManager {
 
   has(tabId: TabId): boolean {
     return this.terminals.has(tabId);
-  }
-
-  /** True when the event matches the user's configured New Tab shortcut. */
-  private matchesNewTabShortcut(e: KeyboardEvent): boolean {
-    if (this.newTabShortcut === 'none') return false;
-    if (!(e.ctrlKey || e.metaKey) || e.altKey) return false;
-    if (e.shiftKey !== (this.newTabShortcut === 'Ctrl+Shift+T')) return false;
-    return e.key.toLowerCase() === (this.newTabShortcut === 'Ctrl+N' ? 'n' : 't');
   }
 
   setNewTabShortcut(shortcut: NewTabShortcut): void {

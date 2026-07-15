@@ -126,6 +126,27 @@
       font-weight: 600;
     }
     #save-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .shortcut-capture {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+    }
+    #new-tab-shortcut {
+      flex: 1;
+      cursor: pointer;
+      caret-color: transparent;
+    }
+    #new-tab-shortcut.capturing {
+      border-color: var(--accent);
+      color: var(--text-secondary);
+      font-style: italic;
+    }
+    .shortcut-capture .link-btn {
+      padding: 0 12px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .field .hint.error { color: var(--danger); }
   </style>
 </head>
 <body>
@@ -154,14 +175,13 @@
       </select>
     </div>
     <div class="field">
-      <label for="new-tab-shortcut-select">New Tab shortcut</label>
-      <select id="new-tab-shortcut-select">
-        <option value="Ctrl+T">Ctrl+T (default)</option>
-        <option value="Ctrl+Shift+T">Ctrl+Shift+T</option>
-        <option value="Ctrl+N">Ctrl+N</option>
-        <option value="none">None &mdash; send Ctrl+T to Claude Code</option>
-      </select>
-      <span class="hint">Remap or disable to let Ctrl+T reach Claude Code (show/hide sub-agent tasks).</span>
+      <label for="new-tab-shortcut">New Tab shortcut</label>
+      <div class="shortcut-capture">
+        <input type="text" id="new-tab-shortcut" readonly placeholder="Click and press keys…">
+        <button type="button" class="link-btn" id="shortcut-reset">Reset</button>
+        <button type="button" class="link-btn" id="shortcut-disable">Disable</button>
+      </div>
+      <span class="hint" id="shortcut-hint">Click the field and press a combination. Disable to send Ctrl+T to Claude Code (show/hide sub-agent tasks).</span>
     </div>
     <div class="field">
       <label for="font-select">Terminal font</label>
@@ -197,9 +217,98 @@
     const fontSelect = document.getElementById('font-select');
     const themeSelect = document.getElementById('theme-select');
     const tabSwitchSelect = document.getElementById('tab-switch-select');
-    const newTabShortcutSelect = document.getElementById('new-tab-shortcut-select');
     const customFontRow = document.getElementById('custom-font-row');
     const customFont = document.getElementById('custom-font');
+
+    // --- New Tab shortcut: VS Code-style key capture (#69) ---
+    const isMac = navigator.platform.startsWith('Mac');
+    const shortcutInput = document.getElementById('new-tab-shortcut');
+    const shortcutHint = document.getElementById('shortcut-hint');
+    const DEFAULT_SHORTCUT = 'Ctrl+T';
+    // Combos already claimed by CodeHerd (canonical form). Ctrl+T is absent —
+    // it is the thing being configured and may be re-selected.
+    const RESERVED = new Set([
+      'Ctrl+W', 'Ctrl+B', 'Ctrl+C', 'Ctrl+V', 'Ctrl+Z', 'Ctrl+F',
+      'Ctrl+Shift+C', 'Ctrl+Shift+R',
+      'Alt+1', 'Alt+2', 'Alt+3', 'Alt+4', 'Alt+5', 'Alt+6', 'Alt+7', 'Alt+8', 'Alt+9',
+    ]);
+    let shortcutValue = DEFAULT_SHORTCUT;
+    let capturing = false;
+
+    const labelFor = (s) => {
+      if (s === 'none') return 'Disabled';
+      const parts = s.split('+');
+      const key = parts.pop();
+      const out = [];
+      if (parts.includes('Ctrl')) out.push(isMac ? '⌘' : 'Ctrl');
+      if (parts.includes('Alt')) out.push(isMac ? '⌥' : 'Alt');
+      if (parts.includes('Shift')) out.push(isMac ? '⇧' : 'Shift');
+      out.push(key);
+      return isMac ? out.join('') : out.join('+');
+    };
+    const renderShortcut = () => {
+      shortcutInput.classList.remove('capturing');
+      shortcutInput.value = labelFor(shortcutValue);
+    };
+    const setHint = (text, isError) => {
+      shortcutHint.textContent = text;
+      shortcutHint.classList.toggle('error', !!isError);
+    };
+    const DEFAULT_HINT = 'Click the field and press a combination. Disable to send Ctrl+T to Claude Code (show/hide sub-agent tasks).';
+
+    shortcutInput.addEventListener('focus', () => {
+      capturing = true;
+      shortcutInput.classList.add('capturing');
+      shortcutInput.value = 'Press key combination…';
+    });
+    shortcutInput.addEventListener('blur', () => {
+      capturing = false;
+      setHint(DEFAULT_HINT, false);
+      renderShortcut();
+    });
+    shortcutInput.addEventListener('keydown', (e) => {
+      if (!capturing) return;
+      e.preventDefault();
+      if (e.key === 'Escape') { shortcutInput.blur(); return; }
+      // Ignore modifier-only presses; wait for the actual key.
+      if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+
+      const parts = [];
+      if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
+      if (e.altKey) parts.push('Alt');
+      if (e.shiftKey) parts.push('Shift');
+      let key = e.key;
+      if (/^f([1-9]|1[0-2])$/i.test(key) || /^[a-z0-9]$/i.test(key)) {
+        key = key.toUpperCase();
+      } else {
+        setHint('Unsupported key — use a letter, digit or F-key.', true);
+        return;
+      }
+      parts.push(key);
+      const canonical = parts.join('+');
+
+      const isFKey = /^F([1-9]|1[0-2])$/.test(key);
+      if (!parts.includes('Ctrl') && !parts.includes('Alt') && !isFKey) {
+        setHint('Add Ctrl or Alt, or use an F-key.', true);
+        return;
+      }
+      if (RESERVED.has(canonical)) {
+        setHint(labelFor(canonical) + ' is already used by CodeHerd.', true);
+        return;
+      }
+      shortcutValue = canonical;
+      shortcutInput.blur();
+    });
+    document.getElementById('shortcut-reset').addEventListener('click', () => {
+      shortcutValue = DEFAULT_SHORTCUT;
+      setHint(DEFAULT_HINT, false);
+      renderShortcut();
+    });
+    document.getElementById('shortcut-disable').addEventListener('click', () => {
+      shortcutValue = 'none';
+      setHint(DEFAULT_HINT, false);
+      renderShortcut();
+    });
 
     fontSelect.addEventListener('change', () => {
       customFontRow.style.display = fontSelect.value === '__custom__' ? 'block' : 'none';
@@ -210,7 +319,8 @@
       warnClose.checked = prefs.warnBeforeClosingTabs;
       themeSelect.value = prefs.theme || 'dark';
       tabSwitchSelect.value = prefs.tabSwitchMode || 'mru';
-      newTabShortcutSelect.value = prefs.newTabShortcut || 'Ctrl+T';
+      shortcutValue = prefs.newTabShortcut || DEFAULT_SHORTCUT;
+      renderShortcut();
       // Check if font matches a preset option
       const options = Array.from(fontSelect.options).map(o => o.value);
       if (options.includes(prefs.fontFamily)) {
@@ -232,7 +342,7 @@
         fontFamily,
         theme: themeSelect.value,
         tabSwitchMode: tabSwitchSelect.value,
-        newTabShortcut: newTabShortcutSelect.value,
+        newTabShortcut: shortcutValue,
       }).then(() => {
         window.preferencesAPI.closeWindow();
       });
