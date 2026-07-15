@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as readline from 'readline';
 import { CLAUDE_HISTORY_FILE, CLAUDE_PROJECTS_DIR } from '../shared/constants';
 import type { ClaudeSession, FolderPath } from '../shared/types';
+import type { AgentRegistry } from './agent-registry';
 
 interface SessionAccumulator {
   /** Most recent prompt that isn't a slash command */
@@ -15,6 +16,8 @@ interface SessionAccumulator {
 }
 
 export class SessionTracker {
+  constructor(private agents: AgentRegistry) {}
+
   async getSessionsForFolder(folder: FolderPath): Promise<ClaudeSession[]> {
     if (!fs.existsSync(CLAUDE_HISTORY_FILE)) {
       return [];
@@ -57,6 +60,11 @@ export class SessionTracker {
       }
     }
 
+    // Background agents log prompts against their project folder just like any other
+    // session, so the list can't tell them apart on history alone — tag them here, since
+    // they need `claude attach` rather than --resume.
+    const live = await this.agents.snapshot();
+
     // History entries outlive Claude Code's transcript cleanup, so drop any
     // session whose transcript is gone or holds no conversation — those
     // can't be resumed (#70)
@@ -68,11 +76,13 @@ export class SessionTracker {
         `${sessionId}.jsonl`,
       );
       if (!(await this.isResumable(transcript))) continue;
+      const agent = live.get(sessionId);
       sessions.push({
         sessionId,
         project: acc.rawProject,
         lastPrompt: acc.lastMeaningfulPrompt || acc.lastPrompt || '(no prompt)',
         timestamp: acc.timestamp,
+        ...(agent?.kind === 'background' && agent.agentId ? { agentId: agent.agentId } : {}),
       });
     }
 

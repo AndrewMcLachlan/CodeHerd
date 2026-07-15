@@ -473,6 +473,17 @@ body {
   margin-top: 2px;
 }
 
+.session-badge {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--accent);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 /* Terminal container */
 #terminal-container {
   flex: 1;

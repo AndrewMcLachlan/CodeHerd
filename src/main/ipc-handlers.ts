@@ -8,6 +8,7 @@ import { StateManager } from './state-manager';
 import { SessionTracker } from './session-tracker';
 import { SessionMetadataWatcher } from './session-metadata-watcher';
 import { HistoryWatcher } from './history-watcher';
+import { AgentRegistry } from './agent-registry';
 import { getGitInfo } from './git-info';
 import { detectStatus } from './status-detection';
 
@@ -31,7 +32,13 @@ export function registerIpcHandlers(
   rebuildMenu?: (items?: RecentlyClosedTab[]) => void,
 ): void {
   const tabs = new Map<string, TabState>();
-  const sessionTracker = new SessionTracker();
+  const agentRegistry = new AgentRegistry();
+  const sessionTracker = new SessionTracker(agentRegistry);
+
+  // Restoring tabs is the first thing the renderer does, and each one needs to know
+  // whether its session is a live background agent — warm the cache now so it doesn't
+  // wait on the lookup.
+  agentRegistry.prime();
 
   function safeSend(channel: string, ...args: unknown[]): void {
     const win = getMainWindow();
@@ -72,7 +79,7 @@ export function registerIpcHandlers(
   // else tells us. Without this, restart resumes the stale session. history.jsonl gets
   // one entry per submitted prompt tagged with the *current* session id for its folder,
   // so we use it to keep the owning tab in sync.
-  const historyWatcher = new HistoryWatcher(({ project, sessionId }) => {
+  const historyWatcher = new HistoryWatcher(async ({ project, sessionId }) => {
     const target = normalizeFolder(project);
     const candidates = Array.from(tabs.values()).filter(t => normalizeFolder(t.launchFolder) === target);
     if (candidates.length === 0) return;
@@ -83,6 +90,14 @@ export function registerIpcHandlers(
     const tab = candidates.find(t => t.isActive)
       ?? candidates.sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
     if (!tab || tab.sessionId === sessionId) return;
+
+    // A background agent logs prompts against the same project folder as the tab it was
+    // launched from, but it's a separate conversation the user drives elsewhere. Adopting
+    // its id would hand the tab a session that can't be resumed on restart.
+    if (await agentRegistry.getBackgroundAgent(sessionId)) return;
+
+    // The tab may have been closed while we were checking.
+    if (!tabs.has(tab.id) || tab.sessionId === sessionId) return;
 
     // Re-point the metadata watcher at the new session so /rename and /color keep working.
     metadataWatcher.unregisterTab(tab.sessionId);
@@ -102,7 +117,21 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.TAB_CREATE, async (_event, request: TabCreateRequest): Promise<TabState> => {
     const tabId = request.tabId;
-    const { sessionId } = ptyManager.spawn(tabId, request.folder, request.resumeSessionId, request.cols, request.rows);
+
+    // A background agent's session can't be resumed while its process is alive — the CLI
+    // refuses and points you at `claude agents`. Every path that reopens a session (tab
+    // restore, sidebar click, recently-closed) lands here, so resolve it once, here:
+    // attach to a live agent, and resume anything else (including agents that have exited).
+    const agent = request.resumeSessionId
+      ? await agentRegistry.getBackgroundAgent(request.resumeSessionId)
+      : undefined;
+
+    const { sessionId } = ptyManager.spawn(tabId, request.folder, {
+      resumeSessionId: request.resumeSessionId,
+      attachAgentId: agent?.agentId,
+      cols: request.cols,
+      rows: request.rows,
+    });
 
     const logPath = path.join(app.getPath('userData'), `pty-debug-${tabId}.log`);
     const logStream = fs.createWriteStream(logPath, { flags: 'a' });

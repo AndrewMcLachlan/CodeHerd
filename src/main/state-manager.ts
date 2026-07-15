@@ -4,9 +4,12 @@ import { app } from 'electron';
 import { STATE_DIR, DEFAULT_APP_STATE, DEFAULT_PREFERENCES } from '../shared/constants';
 import type { AppState, TabState, TabId, RecentlyClosedTab, Preferences } from '../shared/types';
 
-// Dev runs use ~/.codeherd-dev so they never touch the installed app's
-// settings (parallel to the userData split in main.ts)
-const stateDir = app.isPackaged ? STATE_DIR : `${STATE_DIR}-dev`;
+// Dev runs use ~/.codeherd-dev so they never touch the installed app's settings
+// (parallel to the userData split in main.ts). Pass --live-state (npm run dev:live) to
+// point a dev run at the real ~/.codeherd instead — useful for reproducing a bug against
+// your actual tabs. Quit the installed app first: both write state.json, last one wins.
+const useLiveState = app.isPackaged || process.argv.includes('--live-state');
+const stateDir = useLiveState ? STATE_DIR : `${STATE_DIR}-dev`;
 const stateFile = path.join(stateDir, 'state.json');
 
 export class StateManager {

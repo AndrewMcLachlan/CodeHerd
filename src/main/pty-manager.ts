@@ -1,57 +1,45 @@
 import * as pty from 'node-pty';
 import { execSync } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
 import type { TabId, FolderPath, SessionId } from '../shared/types';
 import { v4 as uuidv4 } from 'uuid';
+import { getLoginShellEnv, resolveClaudePath } from './claude-cli';
 
 interface PtyEntry {
   process: pty.IPty;
   sessionId: SessionId;
 }
 
-function getLoginShellEnv(): Record<string, string> {
-  if (process.platform === 'win32') return { ...process.env } as Record<string, string>;
-  try {
-    const shell = process.env.SHELL || '/bin/zsh';
-    // Run login+interactive shell to source both .zprofile and .zshrc
-    const raw = execSync(`${shell} -l -i -c 'env'`, {
-      encoding: 'utf-8',
-      timeout: 5000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    const env: Record<string, string> = {};
-    for (const line of raw.split('\n')) {
-      const idx = line.indexOf('=');
-      if (idx > 0) {
-        env[line.substring(0, idx)] = line.substring(idx + 1);
-      }
-    }
-    return env;
-  } catch {
-    return { ...process.env } as Record<string, string>;
+export interface SpawnOptions {
+  /** Resume this session (`claude --resume`). Also becomes the tab's session id. */
+  resumeSessionId?: SessionId;
+  /**
+   * Attach to a live background agent by job id (`claude attach`) instead of resuming.
+   * Pair with resumeSessionId so the tab still tracks the agent's session id.
+   */
+  attachAgentId?: string;
+  cols?: number;
+  rows?: number;
+}
+
+/** The claude CLI invocation for a tab: attach, resume, or start fresh. */
+export function buildClaudeArgs(sessionId: SessionId, options: SpawnOptions): string[] {
+  if (options.attachAgentId) {
+    // A live background agent refuses --resume; attaching hands us the running session,
+    // the same as picking it out of `claude agents`.
+    return ['attach', options.attachAgentId];
   }
+  if (options.resumeSessionId) return ['--resume', options.resumeSessionId];
+  return ['--session-id', sessionId];
 }
 
 export class PtyManager {
   private ptys = new Map<TabId, PtyEntry>();
   private shellEnv = getLoginShellEnv();
 
-  spawn(
-    tabId: TabId,
-    folder: FolderPath,
-    resumeSessionId?: SessionId,
-    cols?: number,
-    rows?: number,
-  ): { sessionId: SessionId } {
+  spawn(tabId: TabId, folder: FolderPath, options: SpawnOptions = {}): { sessionId: SessionId } {
+    const { resumeSessionId, cols, rows } = options;
     const sessionId = resumeSessionId ?? uuidv4();
-
-    const args: string[] = [];
-    if (resumeSessionId) {
-      args.push('--resume', resumeSessionId);
-    } else {
-      args.push('--session-id', sessionId);
-    }
+    const args = buildClaudeArgs(sessionId, options);
 
     // On Windows, spawn via cmd.exe so node-pty gets a proper console.
     // On macOS/Linux, use the user's login shell so their PATH is loaded
@@ -62,9 +50,7 @@ export class PtyManager {
 
     // Resolve claude's full path from the login shell env, since the
     // non-interactive PTY shell may not have it on PATH.
-    const claudePath = this.shellEnv.PATH?.split(':')
-      .map(p => path.join(p, 'claude'))
-      .find(p => fs.existsSync(p)) || 'claude';
+    const claudePath = resolveClaudePath();
 
     const shellArgs = isWin
       ? ['/c', claudePath, ...args]

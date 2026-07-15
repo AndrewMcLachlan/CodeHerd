@@ -1,6 +1,6 @@
 {
   "name": "codeherd",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Manage multiple Claude Code CLI instances in tabs with session persistence",
   "author": "Andrew McLachlan",
   "license": "MIT",
@@ -16,6 +16,7 @@
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
     "dev:styling": "npm run build && electron . --styling",
+    "dev:live": "npm run build && electron . --live-state",
     "rebuild": "electron-rebuild",
     "package": "electron-forge package",
     "make": "electron-forge make"
