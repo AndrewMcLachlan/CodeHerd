@@ -8,7 +8,7 @@ try {
 
 contextBridge.exposeInMainWorld('preferencesAPI', {
   getPreferences: () => ipcRenderer.invoke('preferences:get'),
-  savePreferences: (prefs: { warnBeforeClosingTabs: boolean; fontFamily: string; theme: string }) =>
+  savePreferences: (prefs: { warnBeforeClosingTabs: boolean; fontFamily: string; theme: string; tabSwitchMode: string; newTabShortcut: string }) =>
     ipcRenderer.invoke('preferences:save', prefs),
   closeWindow: () => ipcRenderer.send('preferences:close'),
   getTheme: () => resolvedTheme,

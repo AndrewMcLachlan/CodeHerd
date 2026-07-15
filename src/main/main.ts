@@ -157,12 +157,17 @@ let isQuitting = false;
 const isStylingMode = process.argv.includes('--styling');
 
 app.whenReady().then(() => {
-  const rebuildMenu = (items: RecentlyClosedTab[]) => {
-    Menu.setApplicationMenu(buildAppMenu(() => mainWindow, items));
+  const initialState = stateManager.getState();
+  // Kept up to date by rebuildMenu so a preferences-triggered rebuild
+  // doesn't lose the Recently Closed submenu
+  let recentlyClosed: RecentlyClosedTab[] = initialState.recentlyClosed;
+  const rebuildMenu = (items?: RecentlyClosedTab[]) => {
+    if (items) recentlyClosed = items;
+    const prefs = stateManager.getPreferences();
+    Menu.setApplicationMenu(buildAppMenu(() => mainWindow, recentlyClosed, prefs.newTabShortcut));
   };
   registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting, rebuildMenu);
-  const initialState = stateManager.getState();
-  Menu.setApplicationMenu(buildAppMenu(() => mainWindow, initialState.recentlyClosed));
+  rebuildMenu();
   createWindow();
 });
 

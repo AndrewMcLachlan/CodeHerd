@@ -73,7 +73,7 @@ export class StateManager {
   }
 
   getPreferences(): Preferences {
-    return this.state.preferences ?? { warnBeforeClosingTabs: true, fontFamily: '' };
+    return this.state.preferences ?? DEFAULT_PREFERENCES;
   }
 
   setPreferences(prefs: Preferences): void {

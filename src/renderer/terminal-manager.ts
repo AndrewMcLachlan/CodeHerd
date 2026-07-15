@@ -1,7 +1,8 @@
 import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import type { TabId, ResolvedTheme } from '../shared/types';
+import type { TabId, ResolvedTheme, NewTabShortcut } from '../shared/types';
+import { DEFAULT_NEW_TAB_SHORTCUT, matchesShortcut } from '../shared/shortcut';
 
 const DARK_TERMINAL_THEME: ITheme = {
   background: '#1e1e2e',
@@ -63,6 +64,7 @@ export class TerminalManager {
   private onTitleChangeCallback: ((tabId: TabId, title: string) => void) | null = null;
   private fontFamily = "'Cascadia Code', 'Fira Code', Consolas, monospace";
   private currentTheme: ResolvedTheme = 'dark';
+  private newTabShortcut: NewTabShortcut = DEFAULT_NEW_TAB_SHORTCUT;
 
   constructor() {
     this.container = document.getElementById('terminal-container')!;
@@ -108,9 +110,14 @@ export class TerminalManager {
       // Let F11 (fullscreen toggle) pass through to Electron menu
       if (e.key === 'F11') return false;
 
-      // Let Ctrl/Cmd+T, Ctrl/Cmd+W, Ctrl/Cmd+B, Ctrl/Cmd+, pass through to menu/renderer
+      // Let the configured New Tab shortcut pass through to the menu/renderer.
+      // When remapped or disabled ('none'), Ctrl+T is NOT intercepted here, so
+      // it reaches Claude Code's show/hide sub-agent tasks toggle (#69)
+      if (matchesShortcut(this.newTabShortcut, e)) return false;
+
+      // Let Ctrl/Cmd+W, Ctrl/Cmd+B, Ctrl/Cmd+, pass through to menu/renderer
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-        if (e.key === 't' || e.key === 'w' || e.key === 'b' || e.key === ',') {
+        if (e.key === 'w' || e.key === 'b' || e.key === ',') {
           return false;
         }
       }
@@ -278,6 +285,10 @@ export class TerminalManager {
 
   has(tabId: TabId): boolean {
     return this.terminals.has(tabId);
+  }
+
+  setNewTabShortcut(shortcut: NewTabShortcut): void {
+    this.newTabShortcut = shortcut;
   }
 
   setFontFamily(font: string): void {

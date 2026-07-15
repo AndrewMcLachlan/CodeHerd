@@ -26,6 +26,7 @@ export const DEFAULT_PREFERENCES = {
   fontFamily: '',
   theme: 'dark' as const,
   tabSwitchMode: 'mru' as const,
+  newTabShortcut: 'Ctrl+T' as const,
 };
 
 export const DEFAULT_APP_STATE = {
