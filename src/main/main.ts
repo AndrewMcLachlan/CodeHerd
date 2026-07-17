@@ -5,6 +5,8 @@ import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { buildAppMenu } from './menu';
+import { checkForUpdate } from './update-checker';
+import { IPC } from '../shared/ipc-channels';
 import type { ThemePreference, ResolvedTheme } from '../shared/types';
 
 // In dev mode, use a separate user data directory so we can run alongside the installed app
@@ -169,6 +171,22 @@ app.whenReady().then(() => {
   registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting, rebuildMenu);
   rebuildMenu();
   createWindow();
+
+  // Check GitHub for a newer release a few seconds after startup (non-blocking,
+  // fails silently when offline). Skipped in dev — the local version isn't
+  // meaningful there — unless forced for manual testing.
+  if (app.isPackaged || process.env.CODEHERD_FORCE_UPDATE_CHECK) {
+    setTimeout(() => {
+      checkForUpdate(app.getVersion()).then((update) => {
+        if (!update) return;
+        // Don't re-notify for a version the user already dismissed
+        if (update.version === stateManager.getState().dismissedUpdateVersion) return;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC.UPDATE_AVAILABLE, update);
+        }
+      });
+    }, 5000);
+  }
 });
 
 app.on('window-all-closed', () => {

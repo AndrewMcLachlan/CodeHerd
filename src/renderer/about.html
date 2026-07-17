@@ -76,6 +76,9 @@
       gap: 4px;
     }
     #links a:hover { color: var(--accent); }
+    #update-notice { font-size: 13px; display: none; }
+    #update-notice a { color: var(--accent); text-decoration: none; }
+    #update-notice a:hover { color: var(--accent-hover); text-decoration: underline; }
     #footer {
       padding: 12px 32px;
       font-size: 11px;
@@ -99,6 +102,7 @@
         <span id="version"></span>
       </div>
       <div id="description">Claude Code Session Manager</div>
+      <div id="update-notice"><a href="#" id="update-link"></a></div>
       <div id="links">
         <a href="#" id="github-link">GitHub</a>
       </div>
@@ -125,6 +129,16 @@
       e.preventDefault();
       window.aboutInfo?.openGithub();
     });
+    const update = window.aboutInfo?.update;
+    if (update) {
+      const link = document.getElementById('update-link');
+      link.textContent = `New version ${update.version} available`;
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.aboutInfo?.openUpdate();
+      });
+      document.getElementById('update-notice').style.display = 'block';
+    }
   </script>
 </body>
 </html>

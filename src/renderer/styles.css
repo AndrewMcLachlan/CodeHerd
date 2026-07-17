@@ -799,3 +799,48 @@ body {
   font-size: 11px;
   margin-left: 3px;
 }
+/* Update notification banner (bottom-right, above the status bar) */
+#update-banner {
+  position: fixed;
+  right: 12px;
+  bottom: 36px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 8px 8px 14px;
+  font-size: 13px;
+  color: var(--text-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  user-select: none;
+}
+
+#update-banner a {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+#update-banner a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+#update-banner button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+#update-banner button:hover {
+  background: var(--hover-overlay);
+  color: var(--text-primary);
+}

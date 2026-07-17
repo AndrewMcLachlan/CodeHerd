@@ -1,4 +1,4 @@
-import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo, Preferences, NewTabShortcut, TabMetadataMessage } from '../shared/types';
+import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo, Preferences, NewTabShortcut, TabMetadataMessage, UpdateInfo } from '../shared/types';
 import { DEFAULT_NEW_TAB_SHORTCUT, formatShortcut, matchesShortcut } from '../shared/shortcut';
 import { TerminalManager } from './terminal-manager';
 import { TabManager } from './tab-manager';
@@ -28,6 +28,8 @@ declare global {
       saveRecentlyClosed: (items: { folder: string; sessionId: string; label: string; closedAt: number }[]) => Promise<void>;
       menuAction: (action: string) => Promise<void>;
       openExternal: (url: string) => Promise<void>;
+      dismissUpdate: (version: string) => Promise<void>;
+      onUpdateAvailable: (cb: (info: UpdateInfo) => void) => () => void;
       onPtyData: (cb: (msg: PtyDataMessage) => void) => () => void;
       onPtyExit: (cb: (msg: { tabId: string; exitCode: number }) => void) => () => void;
       onTabStatus: (cb: (msg: { tabId: string; status: string }) => void) => () => void;
@@ -43,6 +45,37 @@ declare global {
       isDev: boolean;
     };
   }
+}
+
+/** Dismissible toast (bottom-right) shown when a newer release is available. */
+function showUpdateBanner(info: UpdateInfo): void {
+  if (document.getElementById('update-banner')) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'update-banner';
+
+  const text = document.createElement('span');
+  text.textContent = `New version ${info.version} available`;
+
+  const link = document.createElement('a');
+  link.href = '#';
+  link.textContent = 'Download';
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.codeherd.openExternal(info.url);
+  });
+
+  const dismiss = document.createElement('button');
+  dismiss.title = 'Dismiss';
+  dismiss.setAttribute('aria-label', 'Dismiss update notification');
+  dismiss.textContent = '×';
+  dismiss.addEventListener('click', () => {
+    window.codeherd.dismissUpdate(info.version);
+    banner.remove();
+  });
+
+  banner.append(text, link, dismiss);
+  document.body.appendChild(banner);
 }
 
 function formatRecentDetail(folder: string, closedAt?: number): string {
@@ -204,6 +237,10 @@ async function init(): Promise<void> {
 
   window.codeherd.onTabMetadata((msg) => {
     tabManager.applyMetadata(msg);
+  });
+
+  window.codeherd.onUpdateAvailable((info) => {
+    showUpdateBanner(info);
   });
 
   // New tab button

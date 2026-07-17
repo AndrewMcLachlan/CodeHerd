@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import type { TabCreateRequest, PtyDataMessage, AppState, TabState, ClaudeSession, GitInfo, RecentlyClosedTab, Preferences, TabMetadataMessage } from '../shared/types';
+import type { TabCreateRequest, PtyDataMessage, AppState, TabState, ClaudeSession, GitInfo, RecentlyClosedTab, Preferences, TabMetadataMessage, UpdateInfo } from '../shared/types';
 
 contextBridge.exposeInMainWorld('codeherd', {
   // Invoke (request/response)
@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.invoke(IPC.MENU_ACTION, action),
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke(IPC.SHELL_OPEN_EXTERNAL, url),
+  dismissUpdate: (version: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.UPDATE_DISMISS, version),
 
   // Event listeners (main -> renderer)
   onPtyData: (callback: (msg: PtyDataMessage) => void): (() => void) => {
@@ -59,6 +61,11 @@ contextBridge.exposeInMainWorld('codeherd', {
     const listener = (_event: Electron.IpcRendererEvent, msg: TabMetadataMessage) => callback(msg);
     ipcRenderer.on(IPC.TAB_METADATA, listener);
     return () => { ipcRenderer.removeListener(IPC.TAB_METADATA, listener); };
+  },
+  onUpdateAvailable: (callback: (info: UpdateInfo) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, info: UpdateInfo) => callback(info);
+    ipcRenderer.on(IPC.UPDATE_AVAILABLE, listener);
+    return () => { ipcRenderer.removeListener(IPC.UPDATE_AVAILABLE, listener); };
   },
 
   // Menu events (main -> renderer)
