@@ -6,18 +6,21 @@ import type { SessionId, TabId, TabMetadataMessage } from '../shared/types';
 interface MetadataState {
   name: string | null;
   color: string | null;
+  model: string | null;
 }
 
 /**
  * Watches Claude Code's per-session JSONL transcripts at `~/.claude/projects/<folder>/<sessionId>.jsonl`
- * for entries written by `/rename` and `/color` slash commands:
+ * for entries written by `/rename` and `/color` slash commands, plus the model recorded on each
+ * assistant turn:
  *
  *   {"type":"custom-title","customTitle":"Bob","sessionId":"..."}
  *   {"type":"agent-name","agentName":"Bob","sessionId":"..."}
  *   {"type":"agent-color","agentColor":"red","sessionId":"..."}
+ *   {"type":"assistant","message":{"model":"claude-opus-4-8"},"sessionId":"..."}
  *
  * Correlates by sessionId, only re-reads bytes appended since the last event, and emits a
- * TabMetadataMessage when the resolved name or color changes.
+ * TabMetadataMessage when the resolved name, color, or model changes.
  */
 export class SessionMetadataWatcher {
   private rootWatcher: fs.FSWatcher | null = null;
@@ -89,7 +92,7 @@ export class SessionMetadataWatcher {
   /** Metadata observed so far for this session, or null if nothing has been read yet. */
   getKnownMetadata(sessionId: SessionId): MetadataState | null {
     const seen = this.lastSeen.get(sessionId);
-    if (!seen || (seen.name === null && seen.color === null)) return null;
+    if (!seen || (seen.name === null && seen.color === null && seen.model === null)) return null;
     return seen;
   }
 
@@ -174,13 +177,21 @@ export class SessionMetadataWatcher {
     const toScan = chunk.slice(0, lastNl);
     this.offsets.set(sessionId, start + lastNl + 1);
 
-    const prev = this.lastSeen.get(sessionId) ?? { name: null, color: null };
+    const prev = this.lastSeen.get(sessionId) ?? { name: null, color: null, model: null };
     let name = prev.name;
     let color = prev.color;
+    let model = prev.model;
 
     for (const line of toScan.split('\n')) {
       if (!line.trim()) continue;
-      let entry: { type?: string; sessionId?: string; customTitle?: unknown; agentName?: unknown; agentColor?: unknown };
+      let entry: {
+        type?: string;
+        sessionId?: string;
+        customTitle?: unknown;
+        agentName?: unknown;
+        agentColor?: unknown;
+        message?: { model?: unknown };
+      };
       try {
         entry = JSON.parse(line);
       } catch {
@@ -197,18 +208,26 @@ export class SessionMetadataWatcher {
         case 'agent-color':
           if (typeof entry.agentColor === 'string') color = entry.agentColor;
           break;
+        case 'assistant': {
+          // Sidechain/injected turns are logged with a "<synthetic>" model — ignore those
+          // so the indicator keeps showing the real model the user is talking to.
+          const m = entry.message?.model;
+          if (typeof m === 'string' && m && m !== '<synthetic>') model = m;
+          break;
+        }
       }
     }
 
-    this.lastSeen.set(sessionId, { name, color });
+    this.lastSeen.set(sessionId, { name, color, model });
 
     const tabId = this.sessionToTab.get(sessionId);
     if (!tabId) return;
-    if (name === prev.name && color === prev.color) return;
+    if (name === prev.name && color === prev.color && model === prev.model) return;
 
     const msg: TabMetadataMessage = { tabId };
     if (name !== prev.name) msg.name = name;
     if (color !== prev.color) msg.color = color;
+    if (model !== prev.model && model !== null) msg.model = model;
     this.onChange(msg);
   }
 }

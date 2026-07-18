@@ -14,6 +14,8 @@ export interface TabState {
   createdAt: number;
   lastActivityAt: number;
   status: 'running' | 'stopped' | 'resuming' | 'waiting' | 'attention';
+  /** Raw id of the model last seen in this session's transcript (e.g. "claude-opus-4-8"). */
+  model?: string;
 }
 
 export interface RecentlyClosedTab {
@@ -112,6 +114,8 @@ export interface TabMetadataMessage {
   name?: string | null;
   /** Present when Claude has set or cleared a color. `null` means cleared. */
   color?: string | null;
+  /** Present when the session's active model changes. Raw model id; the renderer formats it for display. */
+  model?: string;
 }
 
 export interface GitInfo {

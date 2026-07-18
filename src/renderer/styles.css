@@ -774,6 +774,10 @@ body {
   color: var(--accent-hover);
 }
 
+#status-model {
+  color: var(--text-secondary);
+}
+
 #status-title {
   color: var(--text-muted);
 }

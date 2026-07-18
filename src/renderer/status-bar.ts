@@ -6,9 +6,13 @@ export class StatusBar {
   private gitEl: HTMLElement;
   private worktreeEl: HTMLElement;
   private titleEl: HTMLElement;
+  private modelEl: HTMLElement;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private currentFolder: string | null = null;
+  private currentTabId: TabId | null = null;
   private titles = new Map<TabId, string>();
+  /** Raw model id per tab (e.g. "claude-opus-4-8"), fed by both metadata events and tab seeds. */
+  private models = new Map<TabId, string>();
   /** Last-known git info per folder, so switching back to a folder paints instantly. */
   private gitCache = new Map<string, GitInfo>();
   /** Monotonic token: a refresh only paints if it's still the most recent one issued. */
@@ -20,13 +24,20 @@ export class StatusBar {
     this.gitEl = document.getElementById('status-git')!;
     this.worktreeEl = document.getElementById('status-worktree')!;
     this.titleEl = document.getElementById('status-title')!;
+    this.modelEl = document.getElementById('status-model')!;
   }
 
   setTerminalTitle(tabId: TabId, title: string): void {
     this.titles.set(tabId, title);
   }
 
-  async update(folder: string | null, activeTabId: TabId | null): Promise<void> {
+  /** Record the model for a tab and repaint immediately if it's the one on screen. */
+  setModel(tabId: TabId, model: string): void {
+    this.models.set(tabId, model);
+    if (tabId === this.currentTabId) this.applyModel(model);
+  }
+
+  async update(folder: string | null, activeTabId: TabId | null, model?: string): Promise<void> {
     if (!folder) {
       this.element.classList.add('hidden');
       this.stopPolling();
@@ -34,10 +45,15 @@ export class StatusBar {
     }
 
     this.element.classList.remove('hidden');
+    this.currentTabId = activeTabId;
 
     // Folder
     this.folderEl.textContent = this.shortenPath(folder);
     this.folderEl.title = folder;
+
+    // Model (right side). A seed passed in from the tab keeps the map current on switches.
+    if (activeTabId && model) this.models.set(activeTabId, model);
+    this.applyModel(activeTabId ? this.models.get(activeTabId) : undefined);
 
     // Terminal title (right side)
     const title = activeTabId ? this.titles.get(activeTabId) : null;
@@ -97,6 +113,31 @@ export class StatusBar {
   private clearGit(): void {
     this.gitEl.classList.add('hidden');
     this.worktreeEl.classList.add('hidden');
+  }
+
+  private applyModel(model: string | undefined): void {
+    if (model) {
+      this.modelEl.textContent = this.formatModelName(model);
+      this.modelEl.title = model;
+      this.modelEl.classList.remove('hidden');
+    } else {
+      this.modelEl.classList.add('hidden');
+    }
+  }
+
+  /**
+   * Turn a raw transcript model id into a compact label:
+   *   claude-opus-4-8            -> Opus 4.8
+   *   claude-haiku-4-5-20251001  -> Haiku 4.5   (trailing release date dropped)
+   *   claude-sonnet-5            -> Sonnet 5
+   * Derives the label generically so new models need no lookup table.
+   */
+  private formatModelName(id: string): string {
+    const core = id.replace(/^claude-/, '').replace(/-\d{6,}$/, '');
+    const [family, ...version] = core.split('-');
+    if (!family) return id;
+    const name = family.charAt(0).toUpperCase() + family.slice(1);
+    return version.length ? `${name} ${version.join('.')}` : name;
   }
 
   private renderGit(git: GitInfo): string {

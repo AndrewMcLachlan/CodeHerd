@@ -207,7 +207,7 @@ async function init(): Promise<void> {
     statusBar.setTerminalTitle(tabId, title);
     const active = tabManager.getActiveTab();
     if (active && active.id === tabId) {
-      statusBar.update(active.launchFolder, active.id);
+      statusBar.update(active.launchFolder, active.id, active.model);
     }
   });
 
@@ -219,7 +219,7 @@ async function init(): Promise<void> {
   // When switching tabs, update sidebar and status bar
   tabManager.setOnTabSwitch((tab) => {
     sidebar.loadSessionsForFolder(tab.launchFolder);
-    statusBar.update(tab.launchFolder, tab.id);
+    statusBar.update(tab.launchFolder, tab.id, tab.model);
   });
 
   // Wire PTY data to the correct terminal
@@ -237,6 +237,7 @@ async function init(): Promise<void> {
 
   window.codeherd.onTabMetadata((msg) => {
     tabManager.applyMetadata(msg);
+    if (msg.model) statusBar.setModel(msg.tabId, msg.model);
   });
 
   window.codeherd.onUpdateAvailable((info) => {

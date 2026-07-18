@@ -127,8 +127,17 @@ export function registerIpcHandlers(
       ? await agentRegistry.getBackgroundAgent(request.resumeSessionId)
       : undefined;
 
+    // A session Claude never persisted — e.g. a tab opened but never used before the app
+    // was closed — has no transcript, so `claude --resume` prints "No conversation found"
+    // into the tab. Fall back to a fresh session so the tab reopens cleanly. Live
+    // background agents are exempt: they attach, and needn't have a transcript yet.
+    let resumeSessionId = request.resumeSessionId;
+    if (resumeSessionId && !agent && !(await sessionTracker.canResume(request.folder, resumeSessionId))) {
+      resumeSessionId = undefined;
+    }
+
     const { sessionId } = ptyManager.spawn(tabId, request.folder, {
-      resumeSessionId: request.resumeSessionId,
+      resumeSessionId,
       attachAgentId: agent?.agentId,
       cols: request.cols,
       rows: request.rows,
@@ -170,9 +179,12 @@ export function registerIpcHandlers(
       }
     });
 
-    // Seed the tab with any metadata Claude has already written for this session, so the
-    // renderer paints the correct label/colour on first render rather than waiting for the
-    // IPC metadata event (which would briefly flash the folder-basename default).
+    // Register with the metadata watcher *first* so its initial transcript read populates
+    // lastSeen — then the seed below can carry the name, colour, and model Claude has already
+    // written, painting them on first render rather than waiting for a later IPC event (which
+    // for a resumed session may never come, since the model only re-emits when it changes).
+    metadataWatcher.registerTab(tabId, sessionId);
+
     const known = metadataWatcher.getKnownMetadata(sessionId);
     const initialLabel = known?.name?.trim() || path.basename(request.folder);
 
@@ -183,10 +195,11 @@ export function registerIpcHandlers(
       sessionId,
       label: initialLabel,
       ...(known?.color ? { color: known.color } : {}),
+      ...(known?.model ? { model: known.model } : {}),
       isActive: true,
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
-      status: request.resumeSessionId ? 'resuming' : 'running',
+      status: resumeSessionId ? 'resuming' : 'running',
     };
 
     // Mark all other tabs as not active
@@ -195,7 +208,6 @@ export function registerIpcHandlers(
     }
 
     tabs.set(tabId, tab);
-    metadataWatcher.registerTab(tabId, sessionId);
     saveTabState();
     return tab;
   });
