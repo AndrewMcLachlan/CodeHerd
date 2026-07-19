@@ -1,4 +1,4 @@
-import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo, Preferences, NewTabShortcut, TabMetadataMessage, UpdateInfo } from '../shared/types';
+import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo, Preferences, NewTabShortcut, TabMetadataMessage, UpdateInfo, AgentAvailability } from '../shared/types';
 import { DEFAULT_NEW_TAB_SHORTCUT, formatShortcut, matchesShortcut } from '../shared/shortcut';
 import { TerminalManager } from './terminal-manager';
 import { TabManager } from './tab-manager';
@@ -18,6 +18,7 @@ declare global {
       reorderTabs: (tabIds: string[]) => Promise<void>;
       getAllTabs: () => Promise<TabState[]>;
       listSessions: (folder: string) => Promise<ClaudeSession[]>;
+      getAvailableAgents: () => Promise<AgentAvailability>;
       pickFolder: () => Promise<string | null>;
       getState: () => Promise<AppState>;
       clipboardWrite: (text: string) => Promise<void>;
@@ -47,12 +48,33 @@ declare global {
   }
 }
 
-/** Dismissible toast (bottom-right) shown when a newer release is available. */
+function getNotificationStack(): HTMLDivElement {
+  const existing = document.getElementById('notification-stack');
+  if (existing instanceof HTMLDivElement) return existing;
+
+  const stack = document.createElement('div');
+  stack.id = 'notification-stack';
+  stack.setAttribute('aria-live', 'polite');
+  document.body.appendChild(stack);
+  return stack;
+}
+
+function createDismissButton(label: string, onDismiss: () => void): HTMLButtonElement {
+  const dismiss = document.createElement('button');
+  dismiss.title = 'Dismiss';
+  dismiss.setAttribute('aria-label', label);
+  dismiss.textContent = '×';
+  dismiss.addEventListener('click', onDismiss);
+  return dismiss;
+}
+
+/** Dismissible toast shown when a newer release is available. */
 function showUpdateBanner(info: UpdateInfo): void {
   if (document.getElementById('update-banner')) return;
 
   const banner = document.createElement('div');
   banner.id = 'update-banner';
+  banner.className = 'notification-banner';
 
   const text = document.createElement('span');
   text.textContent = `New version ${info.version} available`;
@@ -65,17 +87,30 @@ function showUpdateBanner(info: UpdateInfo): void {
     window.codeherd.openExternal(info.url);
   });
 
-  const dismiss = document.createElement('button');
-  dismiss.title = 'Dismiss';
-  dismiss.setAttribute('aria-label', 'Dismiss update notification');
-  dismiss.textContent = '×';
-  dismiss.addEventListener('click', () => {
+  const dismiss = createDismissButton('Dismiss update notification', () => {
     window.codeherd.dismissUpdate(info.version);
     banner.remove();
   });
 
   banner.append(text, link, dismiss);
-  document.body.appendChild(banner);
+  getNotificationStack().appendChild(banner);
+}
+
+/** Friendly warning shown when CodeHerd cannot find a supported CLI agent. */
+function showNoAgentsWarning(): void {
+  if (document.getElementById('no-agents-warning')) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'no-agents-warning';
+  banner.className = 'notification-banner warning';
+  banner.setAttribute('role', 'alert');
+
+  const text = document.createElement('span');
+  text.textContent = 'No supported CLI agents found. Install Claude Code or Codex, then restart CodeHerd.';
+
+  const dismiss = createDismissButton('Dismiss agent warning', () => banner.remove());
+  banner.append(text, dismiss);
+  getNotificationStack().appendChild(banner);
 }
 
 function formatRecentDetail(folder: string, closedAt?: number): string {
@@ -242,6 +277,14 @@ async function init(): Promise<void> {
   window.codeherd.onUpdateAvailable((info) => {
     showUpdateBanner(info);
   });
+
+  // Detect both supported CLIs up front. Issue #58 can reuse this same result when it
+  // adds the agent chooser; for now, only the no-agent case needs UI treatment.
+  window.codeherd.getAvailableAgents()
+    .then((agents) => {
+      if (!agents.claude && !agents.codex) showNoAgentsWarning();
+    })
+    .catch((err) => console.warn('Failed to detect CLI agents:', err));
 
   // New tab button
   document.getElementById('new-tab-btn')!.addEventListener('click', () => {

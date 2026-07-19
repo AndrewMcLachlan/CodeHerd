@@ -799,11 +799,19 @@ body {
   font-size: 11px;
   margin-left: 3px;
 }
-/* Update notification banner (bottom-right, above the status bar) */
-#update-banner {
+/* Dismissible notifications (bottom-right, above the status bar) */
+#notification-stack {
   position: fixed;
   right: 12px;
   bottom: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  z-index: 1000;
+}
+
+.notification-banner {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -814,22 +822,25 @@ body {
   font-size: 13px;
   color: var(--text-primary);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  z-index: 1000;
   user-select: none;
 }
 
-#update-banner a {
+.notification-banner.warning {
+  border-left: 3px solid var(--orange);
+}
+
+.notification-banner a {
   color: var(--accent);
   text-decoration: none;
   cursor: pointer;
 }
 
-#update-banner a:hover {
+.notification-banner a:hover {
   color: var(--accent-hover);
   text-decoration: underline;
 }
 
-#update-banner button {
+.notification-banner button {
   background: none;
   border: none;
   color: var(--text-secondary);
@@ -840,7 +851,7 @@ body {
   border-radius: 4px;
 }
 
-#update-banner button:hover {
+.notification-banner button:hover {
   background: var(--hover-overlay);
   color: var(--text-primary);
 }
