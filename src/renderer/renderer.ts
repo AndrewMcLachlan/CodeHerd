@@ -3,9 +3,17 @@ import { DEFAULT_NEW_TAB_SHORTCUT, formatShortcut, matchesShortcut } from '../sh
 import { TerminalManager } from './terminal-manager';
 import { TabManager } from './tab-manager';
 import { Sidebar } from './sidebar';
-import { StatusBar } from './status-bar';
+import { StatusBar, type StatusMeta } from './status-bar';
 import { AppMenu } from './menu-bar';
 import type { MenuItem } from './menu-bar';
+
+/** Snapshot the session indicators the status bar renders off a tab. */
+const toStatusMeta = (t: TabState): StatusMeta => ({
+  model: t.model,
+  contextTokens: t.contextTokens,
+  contextLimit: t.contextLimit,
+  effort: t.effort,
+});
 
 // Declare the API exposed by preload
 declare global {
@@ -207,7 +215,7 @@ async function init(): Promise<void> {
     statusBar.setTerminalTitle(tabId, title);
     const active = tabManager.getActiveTab();
     if (active && active.id === tabId) {
-      statusBar.update(active.launchFolder, active.id, active.model);
+      statusBar.update(active.launchFolder, active.id, toStatusMeta(active));
     }
   });
 
@@ -219,7 +227,7 @@ async function init(): Promise<void> {
   // When switching tabs, update sidebar and status bar
   tabManager.setOnTabSwitch((tab) => {
     sidebar.loadSessionsForFolder(tab.launchFolder);
-    statusBar.update(tab.launchFolder, tab.id, tab.model);
+    statusBar.update(tab.launchFolder, tab.id, toStatusMeta(tab));
   });
 
   // Wire PTY data to the correct terminal
@@ -236,8 +244,8 @@ async function init(): Promise<void> {
   });
 
   window.codeherd.onTabMetadata((msg) => {
-    tabManager.applyMetadata(msg);
-    if (msg.model) statusBar.setModel(msg.tabId, msg.model);
+    const tab = tabManager.applyMetadata(msg);
+    if (tab) statusBar.setMeta(tab.id, toStatusMeta(tab));
   });
 
   window.codeherd.onUpdateAvailable((info) => {

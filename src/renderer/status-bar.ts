@@ -1,5 +1,13 @@
 import type { GitInfo, TabId } from '../shared/types';
 
+/** Per-tab session indicators the status bar renders (model, context fill, reasoning effort). */
+export interface StatusMeta {
+  model?: string;
+  contextTokens?: number;
+  contextLimit?: number;
+  effort?: string;
+}
+
 export class StatusBar {
   private element: HTMLElement;
   private folderEl: HTMLElement;
@@ -7,12 +15,13 @@ export class StatusBar {
   private worktreeEl: HTMLElement;
   private titleEl: HTMLElement;
   private modelEl: HTMLElement;
+  private contextEl: HTMLElement;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private currentFolder: string | null = null;
   private currentTabId: TabId | null = null;
   private titles = new Map<TabId, string>();
-  /** Raw model id per tab (e.g. "claude-opus-4-8"), fed by both metadata events and tab seeds. */
-  private models = new Map<TabId, string>();
+  /** Latest session indicators per tab, fed by both metadata events and tab seeds. */
+  private meta = new Map<TabId, StatusMeta>();
   /** Last-known git info per folder, so switching back to a folder paints instantly. */
   private gitCache = new Map<string, GitInfo>();
   /** Monotonic token: a refresh only paints if it's still the most recent one issued. */
@@ -25,19 +34,20 @@ export class StatusBar {
     this.worktreeEl = document.getElementById('status-worktree')!;
     this.titleEl = document.getElementById('status-title')!;
     this.modelEl = document.getElementById('status-model')!;
+    this.contextEl = document.getElementById('status-context')!;
   }
 
   setTerminalTitle(tabId: TabId, title: string): void {
     this.titles.set(tabId, title);
   }
 
-  /** Record the model for a tab and repaint immediately if it's the one on screen. */
-  setModel(tabId: TabId, model: string): void {
-    this.models.set(tabId, model);
-    if (tabId === this.currentTabId) this.applyModel(model);
+  /** Record a tab's session indicators and repaint immediately if it's the one on screen. */
+  setMeta(tabId: TabId, meta: StatusMeta): void {
+    this.meta.set(tabId, meta);
+    if (tabId === this.currentTabId) this.applyMeta(meta);
   }
 
-  async update(folder: string | null, activeTabId: TabId | null, model?: string): Promise<void> {
+  async update(folder: string | null, activeTabId: TabId | null, meta?: StatusMeta): Promise<void> {
     if (!folder) {
       this.element.classList.add('hidden');
       this.stopPolling();
@@ -51,9 +61,9 @@ export class StatusBar {
     this.folderEl.textContent = this.shortenPath(folder);
     this.folderEl.title = folder;
 
-    // Model (right side). A seed passed in from the tab keeps the map current on switches.
-    if (activeTabId && model) this.models.set(activeTabId, model);
-    this.applyModel(activeTabId ? this.models.get(activeTabId) : undefined);
+    // Session indicators (right side). A seed passed in from the tab keeps the map current on switches.
+    if (activeTabId && meta) this.meta.set(activeTabId, meta);
+    this.applyMeta(activeTabId ? this.meta.get(activeTabId) : undefined);
 
     // Terminal title (right side)
     const title = activeTabId ? this.titles.get(activeTabId) : null;
@@ -115,13 +125,27 @@ export class StatusBar {
     this.worktreeEl.classList.add('hidden');
   }
 
-  private applyModel(model: string | undefined): void {
-    if (model) {
-      this.modelEl.textContent = this.formatModelName(model);
-      this.modelEl.title = model;
+  private applyMeta(meta: StatusMeta | undefined): void {
+    // Model (+ reasoning effort), e.g. "Opus 4.8 · high"
+    if (meta?.model) {
+      const effort = meta.effort ? ` · ${meta.effort}` : '';
+      this.modelEl.textContent = this.formatModelName(meta.model) + effort;
+      this.modelEl.title = meta.effort ? `${meta.model} · ${meta.effort} effort` : meta.model;
       this.modelEl.classList.remove('hidden');
     } else {
       this.modelEl.classList.add('hidden');
+    }
+
+    // Context fill, e.g. "ctx 22%" — colour ramps as it approaches the window limit.
+    if (meta?.contextTokens && meta.contextLimit) {
+      const pct = Math.round((meta.contextTokens / meta.contextLimit) * 100);
+      this.contextEl.textContent = `ctx ${pct}%`;
+      this.contextEl.title = `Context: ${meta.contextTokens.toLocaleString()} / ${meta.contextLimit.toLocaleString()} tokens`;
+      this.contextEl.classList.toggle('status-context-warn', pct >= 75 && pct < 90);
+      this.contextEl.classList.toggle('status-context-danger', pct >= 90);
+      this.contextEl.classList.remove('hidden');
+    } else {
+      this.contextEl.classList.add('hidden');
     }
   }
 

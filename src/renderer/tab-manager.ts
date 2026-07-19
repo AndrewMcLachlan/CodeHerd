@@ -179,9 +179,9 @@ export class TabManager {
    * as written to the session transcript).
    * Updates the in-memory tab and the DOM; persistence lives in the main process.
    */
-  applyMetadata(msg: TabMetadataMessage): void {
+  applyMetadata(msg: TabMetadataMessage): TabState | undefined {
     const tab = this.tabs.get(msg.tabId);
-    if (!tab) return;
+    if (!tab) return undefined;
 
     if (msg.name !== undefined) {
       const trimmed = msg.name?.trim() ?? '';
@@ -200,8 +200,13 @@ export class TabManager {
       if (tabEl) this.applyColorToElement(tabEl, tab.color);
     }
 
-    // The status bar reads model off the tab; the renderer repaints it after this call.
+    // The status bar reads these off the tab; the renderer repaints after this call.
     if (msg.model) tab.model = msg.model;
+    if (msg.contextTokens !== undefined) tab.contextTokens = msg.contextTokens;
+    if (msg.contextLimit !== undefined) tab.contextLimit = msg.contextLimit;
+    if (msg.effort) tab.effort = msg.effort;
+
+    return tab;
   }
 
   private applyColorToElement(el: HTMLElement, color: string | undefined): void {

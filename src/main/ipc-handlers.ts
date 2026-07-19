@@ -53,23 +53,30 @@ export function registerIpcHandlers(
   const metadataWatcher = new SessionMetadataWatcher((msg: TabMetadataMessage) => {
     const tab = tabs.get(msg.tabId);
     if (!tab) return;
-    let dirty = false;
+    // `durable` = a change worth writing to state.json; `changed` = anything worth painting.
+    // Context fill updates every assistant turn, so it forwards to the renderer but doesn't
+    // trigger a disk write each time — it's re-derived from the transcript on restore anyway.
+    let durable = false;
+    let changed = false;
     if (msg.name !== undefined) {
       const next = msg.name && msg.name.trim().length > 0 ? msg.name.trim() : path.basename(tab.launchFolder);
-      if (tab.label !== next) { tab.label = next; dirty = true; }
+      if (tab.label !== next) { tab.label = next; durable = true; changed = true; }
     }
     if (msg.color !== undefined) {
       if (msg.color) {
-        if (tab.color !== msg.color) { tab.color = msg.color; dirty = true; }
+        if (tab.color !== msg.color) { tab.color = msg.color; durable = true; changed = true; }
       } else if (tab.color !== undefined) {
         delete tab.color;
-        dirty = true;
+        durable = true;
+        changed = true;
       }
     }
-    if (dirty) {
-      saveTabState();
-      safeSend(IPC.TAB_METADATA, msg);
-    }
+    if (msg.model !== undefined && tab.model !== msg.model) { tab.model = msg.model; durable = true; changed = true; }
+    if (msg.contextTokens !== undefined && tab.contextTokens !== msg.contextTokens) { tab.contextTokens = msg.contextTokens; changed = true; }
+    if (msg.contextLimit !== undefined && tab.contextLimit !== msg.contextLimit) { tab.contextLimit = msg.contextLimit; changed = true; }
+    if (msg.effort !== undefined && tab.effort !== msg.effort) { tab.effort = msg.effort; changed = true; }
+    if (durable) saveTabState();
+    if (changed) safeSend(IPC.TAB_METADATA, msg);
   });
   metadataWatcher.start();
 
@@ -196,6 +203,9 @@ export function registerIpcHandlers(
       label: initialLabel,
       ...(known?.color ? { color: known.color } : {}),
       ...(known?.model ? { model: known.model } : {}),
+      ...(known?.contextTokens != null ? { contextTokens: known.contextTokens } : {}),
+      ...(known?.contextLimit != null ? { contextLimit: known.contextLimit } : {}),
+      ...(known?.effort ? { effort: known.effort } : {}),
       isActive: true,
       createdAt: Date.now(),
       lastActivityAt: Date.now(),

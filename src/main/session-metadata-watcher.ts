@@ -7,20 +7,29 @@ interface MetadataState {
   name: string | null;
   color: string | null;
   model: string | null;
+  contextTokens: number | null;
+  contextLimit: number | null;
+  effort: string | null;
 }
+
+/** Below this a session is assumed 200k; a turn exceeding it can only be a 1M-context session. */
+const STANDARD_CONTEXT_LIMIT = 200_000;
+const LARGE_CONTEXT_LIMIT = 1_000_000;
+
+const asNumber = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
 /**
  * Watches Claude Code's per-session JSONL transcripts at `~/.claude/projects/<folder>/<sessionId>.jsonl`
- * for entries written by `/rename` and `/color` slash commands, plus the model recorded on each
- * assistant turn:
+ * for entries written by `/rename` and `/color` slash commands, plus the model, token usage, and
+ * reasoning effort recorded on each assistant turn:
  *
  *   {"type":"custom-title","customTitle":"Bob","sessionId":"..."}
  *   {"type":"agent-name","agentName":"Bob","sessionId":"..."}
  *   {"type":"agent-color","agentColor":"red","sessionId":"..."}
- *   {"type":"assistant","message":{"model":"claude-opus-4-8"},"sessionId":"..."}
+ *   {"type":"assistant","effort":"high","message":{"model":"claude-opus-4-8","usage":{...}},"sessionId":"..."}
  *
  * Correlates by sessionId, only re-reads bytes appended since the last event, and emits a
- * TabMetadataMessage when the resolved name, color, or model changes.
+ * TabMetadataMessage when the resolved name, color, model, context fill, or effort changes.
  */
 export class SessionMetadataWatcher {
   private rootWatcher: fs.FSWatcher | null = null;
@@ -92,7 +101,8 @@ export class SessionMetadataWatcher {
   /** Metadata observed so far for this session, or null if nothing has been read yet. */
   getKnownMetadata(sessionId: SessionId): MetadataState | null {
     const seen = this.lastSeen.get(sessionId);
-    if (!seen || (seen.name === null && seen.color === null && seen.model === null)) return null;
+    if (!seen || (seen.name === null && seen.color === null && seen.model === null
+        && seen.contextTokens === null && seen.effort === null)) return null;
     return seen;
   }
 
@@ -177,10 +187,14 @@ export class SessionMetadataWatcher {
     const toScan = chunk.slice(0, lastNl);
     this.offsets.set(sessionId, start + lastNl + 1);
 
-    const prev = this.lastSeen.get(sessionId) ?? { name: null, color: null, model: null };
+    const prev = this.lastSeen.get(sessionId)
+      ?? { name: null, color: null, model: null, contextTokens: null, contextLimit: null, effort: null };
     let name = prev.name;
     let color = prev.color;
     let model = prev.model;
+    let contextTokens = prev.contextTokens;
+    let contextLimit = prev.contextLimit;
+    let effort = prev.effort;
 
     for (const line of toScan.split('\n')) {
       if (!line.trim()) continue;
@@ -190,7 +204,8 @@ export class SessionMetadataWatcher {
         customTitle?: unknown;
         agentName?: unknown;
         agentColor?: unknown;
-        message?: { model?: unknown };
+        effort?: unknown;
+        message?: { model?: unknown; usage?: Record<string, unknown> };
       };
       try {
         entry = JSON.parse(line);
@@ -209,25 +224,46 @@ export class SessionMetadataWatcher {
           if (typeof entry.agentColor === 'string') color = entry.agentColor;
           break;
         case 'assistant': {
-          // Sidechain/injected turns are logged with a "<synthetic>" model — ignore those
-          // so the indicator keeps showing the real model the user is talking to.
+          // Sidechain/injected turns are logged with a "<synthetic>" model — skip the whole
+          // entry so model, context, and effort keep reflecting the real conversation.
           const m = entry.message?.model;
-          if (typeof m === 'string' && m && m !== '<synthetic>') model = m;
+          if (typeof m !== 'string' || !m || m === '<synthetic>') break;
+          model = m;
+          if (typeof entry.effort === 'string' && entry.effort) effort = entry.effort;
+          const usage = entry.message?.usage;
+          if (usage) {
+            // The prompt sent for this turn — the whole context window — is input plus both
+            // cache tiers. This is the current fill and self-corrects after an auto-compact.
+            const total = asNumber(usage.input_tokens)
+              + asNumber(usage.cache_read_input_tokens)
+              + asNumber(usage.cache_creation_input_tokens);
+            if (total > 0) {
+              contextTokens = total;
+              // Latch the window size upward: once a turn exceeds 200k we know it's a 1M session.
+              const limit = total > STANDARD_CONTEXT_LIMIT ? LARGE_CONTEXT_LIMIT : STANDARD_CONTEXT_LIMIT;
+              contextLimit = Math.max(contextLimit ?? 0, limit);
+            }
+          }
           break;
         }
       }
     }
 
-    this.lastSeen.set(sessionId, { name, color, model });
+    this.lastSeen.set(sessionId, { name, color, model, contextTokens, contextLimit, effort });
 
     const tabId = this.sessionToTab.get(sessionId);
     if (!tabId) return;
-    if (name === prev.name && color === prev.color && model === prev.model) return;
+    if (name === prev.name && color === prev.color && model === prev.model
+        && contextTokens === prev.contextTokens && contextLimit === prev.contextLimit
+        && effort === prev.effort) return;
 
     const msg: TabMetadataMessage = { tabId };
     if (name !== prev.name) msg.name = name;
     if (color !== prev.color) msg.color = color;
     if (model !== prev.model && model !== null) msg.model = model;
+    if (contextTokens !== prev.contextTokens && contextTokens !== null) msg.contextTokens = contextTokens;
+    if (contextLimit !== prev.contextLimit && contextLimit !== null) msg.contextLimit = contextLimit;
+    if (effort !== prev.effort && effort !== null) msg.effort = effort;
     this.onChange(msg);
   }
 }
