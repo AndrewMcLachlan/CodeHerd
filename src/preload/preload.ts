@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import type { TabCreateRequest, PtyDataMessage, AppState, TabState, ClaudeSession, GitInfo, RecentlyClosedTab, Preferences, TabMetadataMessage, UpdateInfo } from '../shared/types';
+import type { TabCreateRequest, PtyDataMessage, AppState, TabState, ClaudeSession, GitInfo, RecentlyClosedTab, Preferences, TabMetadataMessage, UpdateInfo, AgentAvailability } from '../shared/types';
 
 contextBridge.exposeInMainWorld('codeherd', {
   // Invoke (request/response)
@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.invoke(IPC.TAB_REORDER, tabIds),
   listSessions: (folder: string): Promise<ClaudeSession[]> =>
     ipcRenderer.invoke(IPC.SESSION_LIST, { folder }),
+  getAvailableAgents: (): Promise<AgentAvailability> =>
+    ipcRenderer.invoke(IPC.AGENT_GET_AVAILABLE),
   pickFolder: (): Promise<string | null> =>
     ipcRenderer.invoke(IPC.FOLDER_PICK),
   getState: (): Promise<AppState> =>

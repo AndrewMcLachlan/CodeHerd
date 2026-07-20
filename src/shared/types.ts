@@ -2,6 +2,11 @@ export type TabId = string;
 export type SessionId = string;
 export type FolderPath = string;
 
+export type AgentType = 'claude' | 'codex';
+
+/** CLI agents currently resolvable from the user's login-shell environment. */
+export type AgentAvailability = Record<AgentType, boolean>;
+
 export interface TabState {
   id: TabId;
   launchFolder: FolderPath;

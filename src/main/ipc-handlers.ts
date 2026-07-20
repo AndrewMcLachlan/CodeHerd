@@ -9,6 +9,7 @@ import { SessionTracker } from './session-tracker';
 import { SessionMetadataWatcher } from './session-metadata-watcher';
 import { HistoryWatcher } from './history-watcher';
 import { AgentRegistry } from './agent-registry';
+import { detectAvailableAgents } from './agent-detection';
 import { getGitInfo } from './git-info';
 import { detectStatus } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
@@ -290,6 +291,10 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.SESSION_LIST, async (_event, { folder }: { folder: string }) => {
     return sessionTracker.getSessionsForFolder(folder);
+  });
+
+  ipcMain.handle(IPC.AGENT_GET_AVAILABLE, () => {
+    return detectAvailableAgents();
   });
 
   ipcMain.handle(IPC.STATE_GET, async () => {
