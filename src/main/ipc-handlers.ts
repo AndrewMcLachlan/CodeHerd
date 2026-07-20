@@ -54,23 +54,30 @@ export function registerIpcHandlers(
   const metadataWatcher = new SessionMetadataWatcher((msg: TabMetadataMessage) => {
     const tab = tabs.get(msg.tabId);
     if (!tab) return;
-    let dirty = false;
+    // `durable` = a change worth writing to state.json; `changed` = anything worth painting.
+    // Context fill updates every assistant turn, so it forwards to the renderer but doesn't
+    // trigger a disk write each time — it's re-derived from the transcript on restore anyway.
+    let durable = false;
+    let changed = false;
     if (msg.name !== undefined) {
       const next = msg.name && msg.name.trim().length > 0 ? msg.name.trim() : path.basename(tab.launchFolder);
-      if (tab.label !== next) { tab.label = next; dirty = true; }
+      if (tab.label !== next) { tab.label = next; durable = true; changed = true; }
     }
     if (msg.color !== undefined) {
       if (msg.color) {
-        if (tab.color !== msg.color) { tab.color = msg.color; dirty = true; }
+        if (tab.color !== msg.color) { tab.color = msg.color; durable = true; changed = true; }
       } else if (tab.color !== undefined) {
         delete tab.color;
-        dirty = true;
+        durable = true;
+        changed = true;
       }
     }
-    if (dirty) {
-      saveTabState();
-      safeSend(IPC.TAB_METADATA, msg);
-    }
+    if (msg.model !== undefined && tab.model !== msg.model) { tab.model = msg.model; durable = true; changed = true; }
+    if (msg.contextTokens !== undefined && tab.contextTokens !== msg.contextTokens) { tab.contextTokens = msg.contextTokens; changed = true; }
+    if (msg.contextLimit !== undefined && tab.contextLimit !== msg.contextLimit) { tab.contextLimit = msg.contextLimit; changed = true; }
+    if (msg.effort !== undefined && tab.effort !== msg.effort) { tab.effort = msg.effort; changed = true; }
+    if (durable) saveTabState();
+    if (changed) safeSend(IPC.TAB_METADATA, msg);
   });
   metadataWatcher.start();
 
@@ -128,8 +135,17 @@ export function registerIpcHandlers(
       ? await agentRegistry.getBackgroundAgent(request.resumeSessionId)
       : undefined;
 
+    // A session Claude never persisted — e.g. a tab opened but never used before the app
+    // was closed — has no transcript, so `claude --resume` prints "No conversation found"
+    // into the tab. Fall back to a fresh session so the tab reopens cleanly. Live
+    // background agents are exempt: they attach, and needn't have a transcript yet.
+    let resumeSessionId = request.resumeSessionId;
+    if (resumeSessionId && !agent && !(await sessionTracker.canResume(request.folder, resumeSessionId))) {
+      resumeSessionId = undefined;
+    }
+
     const { sessionId } = ptyManager.spawn(tabId, request.folder, {
-      resumeSessionId: request.resumeSessionId,
+      resumeSessionId,
       attachAgentId: agent?.agentId,
       cols: request.cols,
       rows: request.rows,
@@ -171,9 +187,12 @@ export function registerIpcHandlers(
       }
     });
 
-    // Seed the tab with any metadata Claude has already written for this session, so the
-    // renderer paints the correct label/colour on first render rather than waiting for the
-    // IPC metadata event (which would briefly flash the folder-basename default).
+    // Register with the metadata watcher *first* so its initial transcript read populates
+    // lastSeen — then the seed below can carry the name, colour, and model Claude has already
+    // written, painting them on first render rather than waiting for a later IPC event (which
+    // for a resumed session may never come, since the model only re-emits when it changes).
+    metadataWatcher.registerTab(tabId, sessionId);
+
     const known = metadataWatcher.getKnownMetadata(sessionId);
     const initialLabel = known?.name?.trim() || path.basename(request.folder);
 
@@ -184,10 +203,14 @@ export function registerIpcHandlers(
       sessionId,
       label: initialLabel,
       ...(known?.color ? { color: known.color } : {}),
+      ...(known?.model ? { model: known.model } : {}),
+      ...(known?.contextTokens != null ? { contextTokens: known.contextTokens } : {}),
+      ...(known?.contextLimit != null ? { contextLimit: known.contextLimit } : {}),
+      ...(known?.effort ? { effort: known.effort } : {}),
       isActive: true,
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
-      status: request.resumeSessionId ? 'resuming' : 'running',
+      status: resumeSessionId ? 'resuming' : 'running',
     };
 
     // Mark all other tabs as not active
@@ -196,7 +219,6 @@ export function registerIpcHandlers(
     }
 
     tabs.set(tabId, tab);
-    metadataWatcher.registerTab(tabId, sessionId);
     saveTabState();
     return tab;
   });

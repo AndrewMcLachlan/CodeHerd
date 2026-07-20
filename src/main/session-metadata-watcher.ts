@@ -1,23 +1,35 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { CLAUDE_PROJECTS_DIR } from '../shared/constants';
+import { CLAUDE_DIR, CLAUDE_PROJECTS_DIR } from '../shared/constants';
 import type { SessionId, TabId, TabMetadataMessage } from '../shared/types';
 
 interface MetadataState {
   name: string | null;
   color: string | null;
+  model: string | null;
+  contextTokens: number | null;
+  contextLimit: number | null;
+  effort: string | null;
 }
+
+/** Below this a session is assumed 200k; a turn exceeding it can only be a 1M-context session. */
+const STANDARD_CONTEXT_LIMIT = 200_000;
+const LARGE_CONTEXT_LIMIT = 1_000_000;
+
+const asNumber = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
 /**
  * Watches Claude Code's per-session JSONL transcripts at `~/.claude/projects/<folder>/<sessionId>.jsonl`
- * for entries written by `/rename` and `/color` slash commands:
+ * for entries written by `/rename` and `/color` slash commands, plus the model, token usage, and
+ * reasoning effort recorded on each assistant turn:
  *
  *   {"type":"custom-title","customTitle":"Bob","sessionId":"..."}
  *   {"type":"agent-name","agentName":"Bob","sessionId":"..."}
  *   {"type":"agent-color","agentColor":"red","sessionId":"..."}
+ *   {"type":"assistant","effort":"high","message":{"model":"claude-opus-4-8","usage":{...}},"sessionId":"..."}
  *
  * Correlates by sessionId, only re-reads bytes appended since the last event, and emits a
- * TabMetadataMessage when the resolved name or color changes.
+ * TabMetadataMessage when the resolved name, color, model, context fill, or effort changes.
  */
 export class SessionMetadataWatcher {
   private rootWatcher: fs.FSWatcher | null = null;
@@ -26,8 +38,36 @@ export class SessionMetadataWatcher {
   private lastSeen = new Map<SessionId, MetadataState>();
   private offsets = new Map<SessionId, number>();
   private pending = new Map<string, NodeJS.Timeout>();
+  private cachedDefaultLimit: number | null = null;
+  private cachedDefaultLimitAt = 0;
 
   constructor(private onChange: (msg: TabMetadataMessage) => void) {}
+
+  /**
+   * The context window to measure fill against for a session on the user's default model. The
+   * transcript records only the model *family* (e.g. "claude-opus-4-8"), not whether the
+   * 1M-context variant is active — but `~/.claude/settings.json` `model` does (e.g. "opus[1m]").
+   * Read it (cached briefly) so a 1M user sees fill against 1M from the first turn, instead of
+   * the 200k default until a turn happens to exceed 200k. Re-read cheaply to pick up /model changes.
+   */
+  private defaultContextLimit(): number {
+    const now = Date.now();
+    if (this.cachedDefaultLimit !== null && now - this.cachedDefaultLimitAt < 10_000) {
+      return this.cachedDefaultLimit;
+    }
+    let limit = STANDARD_CONTEXT_LIMIT;
+    try {
+      const settings = JSON.parse(fs.readFileSync(path.join(CLAUDE_DIR, 'settings.json'), 'utf-8'));
+      if (typeof settings?.model === 'string' && settings.model.includes('[1m]')) {
+        limit = LARGE_CONTEXT_LIMIT;
+      }
+    } catch {
+      // no settings / unreadable — fall back to the standard window
+    }
+    this.cachedDefaultLimit = limit;
+    this.cachedDefaultLimitAt = now;
+    return limit;
+  }
 
   start(): void {
     if (this.rootWatcher) return;
@@ -89,7 +129,8 @@ export class SessionMetadataWatcher {
   /** Metadata observed so far for this session, or null if nothing has been read yet. */
   getKnownMetadata(sessionId: SessionId): MetadataState | null {
     const seen = this.lastSeen.get(sessionId);
-    if (!seen || (seen.name === null && seen.color === null)) return null;
+    if (!seen || (seen.name === null && seen.color === null && seen.model === null
+        && seen.contextTokens === null && seen.effort === null)) return null;
     return seen;
   }
 
@@ -174,13 +215,26 @@ export class SessionMetadataWatcher {
     const toScan = chunk.slice(0, lastNl);
     this.offsets.set(sessionId, start + lastNl + 1);
 
-    const prev = this.lastSeen.get(sessionId) ?? { name: null, color: null };
+    const prev = this.lastSeen.get(sessionId)
+      ?? { name: null, color: null, model: null, contextTokens: null, contextLimit: null, effort: null };
     let name = prev.name;
     let color = prev.color;
+    let model = prev.model;
+    let contextTokens = prev.contextTokens;
+    let contextLimit = prev.contextLimit;
+    let effort = prev.effort;
 
     for (const line of toScan.split('\n')) {
       if (!line.trim()) continue;
-      let entry: { type?: string; sessionId?: string; customTitle?: unknown; agentName?: unknown; agentColor?: unknown };
+      let entry: {
+        type?: string;
+        sessionId?: string;
+        customTitle?: unknown;
+        agentName?: unknown;
+        agentColor?: unknown;
+        effort?: unknown;
+        message?: { model?: unknown; usage?: Record<string, unknown> };
+      };
       try {
         entry = JSON.parse(line);
       } catch {
@@ -197,18 +251,48 @@ export class SessionMetadataWatcher {
         case 'agent-color':
           if (typeof entry.agentColor === 'string') color = entry.agentColor;
           break;
+        case 'assistant': {
+          // Sidechain/injected turns are logged with a "<synthetic>" model — skip the whole
+          // entry so model, context, and effort keep reflecting the real conversation.
+          const m = entry.message?.model;
+          if (typeof m !== 'string' || !m || m === '<synthetic>') break;
+          model = m;
+          if (typeof entry.effort === 'string' && entry.effort) effort = entry.effort;
+          const usage = entry.message?.usage;
+          if (usage) {
+            // The prompt sent for this turn — the whole context window — is input plus both
+            // cache tiers. This is the current fill and self-corrects after an auto-compact.
+            const total = asNumber(usage.input_tokens)
+              + asNumber(usage.cache_read_input_tokens)
+              + asNumber(usage.cache_creation_input_tokens);
+            if (total > 0) {
+              contextTokens = total;
+              // Measure against the user's configured window (1M for opus[1m]), and latch upward
+              // if a turn ever exceeds it — the denominator never understates the real window.
+              const observed = total > STANDARD_CONTEXT_LIMIT ? LARGE_CONTEXT_LIMIT : STANDARD_CONTEXT_LIMIT;
+              contextLimit = Math.max(contextLimit ?? 0, this.defaultContextLimit(), observed);
+            }
+          }
+          break;
+        }
       }
     }
 
-    this.lastSeen.set(sessionId, { name, color });
+    this.lastSeen.set(sessionId, { name, color, model, contextTokens, contextLimit, effort });
 
     const tabId = this.sessionToTab.get(sessionId);
     if (!tabId) return;
-    if (name === prev.name && color === prev.color) return;
+    if (name === prev.name && color === prev.color && model === prev.model
+        && contextTokens === prev.contextTokens && contextLimit === prev.contextLimit
+        && effort === prev.effort) return;
 
     const msg: TabMetadataMessage = { tabId };
     if (name !== prev.name) msg.name = name;
     if (color !== prev.color) msg.color = color;
+    if (model !== prev.model && model !== null) msg.model = model;
+    if (contextTokens !== prev.contextTokens && contextTokens !== null) msg.contextTokens = contextTokens;
+    if (contextLimit !== prev.contextLimit && contextLimit !== null) msg.contextLimit = contextLimit;
+    if (effort !== prev.effort && effort !== null) msg.effort = effort;
     this.onChange(msg);
   }
 }
