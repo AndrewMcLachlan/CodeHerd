@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { CLAUDE_PROJECTS_DIR } from '../shared/constants';
+import { CLAUDE_DIR, CLAUDE_PROJECTS_DIR } from '../shared/constants';
 import type { SessionId, TabId, TabMetadataMessage } from '../shared/types';
 
 interface MetadataState {
@@ -38,8 +38,36 @@ export class SessionMetadataWatcher {
   private lastSeen = new Map<SessionId, MetadataState>();
   private offsets = new Map<SessionId, number>();
   private pending = new Map<string, NodeJS.Timeout>();
+  private cachedDefaultLimit: number | null = null;
+  private cachedDefaultLimitAt = 0;
 
   constructor(private onChange: (msg: TabMetadataMessage) => void) {}
+
+  /**
+   * The context window to measure fill against for a session on the user's default model. The
+   * transcript records only the model *family* (e.g. "claude-opus-4-8"), not whether the
+   * 1M-context variant is active — but `~/.claude/settings.json` `model` does (e.g. "opus[1m]").
+   * Read it (cached briefly) so a 1M user sees fill against 1M from the first turn, instead of
+   * the 200k default until a turn happens to exceed 200k. Re-read cheaply to pick up /model changes.
+   */
+  private defaultContextLimit(): number {
+    const now = Date.now();
+    if (this.cachedDefaultLimit !== null && now - this.cachedDefaultLimitAt < 10_000) {
+      return this.cachedDefaultLimit;
+    }
+    let limit = STANDARD_CONTEXT_LIMIT;
+    try {
+      const settings = JSON.parse(fs.readFileSync(path.join(CLAUDE_DIR, 'settings.json'), 'utf-8'));
+      if (typeof settings?.model === 'string' && settings.model.includes('[1m]')) {
+        limit = LARGE_CONTEXT_LIMIT;
+      }
+    } catch {
+      // no settings / unreadable — fall back to the standard window
+    }
+    this.cachedDefaultLimit = limit;
+    this.cachedDefaultLimitAt = now;
+    return limit;
+  }
 
   start(): void {
     if (this.rootWatcher) return;
@@ -239,9 +267,10 @@ export class SessionMetadataWatcher {
               + asNumber(usage.cache_creation_input_tokens);
             if (total > 0) {
               contextTokens = total;
-              // Latch the window size upward: once a turn exceeds 200k we know it's a 1M session.
-              const limit = total > STANDARD_CONTEXT_LIMIT ? LARGE_CONTEXT_LIMIT : STANDARD_CONTEXT_LIMIT;
-              contextLimit = Math.max(contextLimit ?? 0, limit);
+              // Measure against the user's configured window (1M for opus[1m]), and latch upward
+              // if a turn ever exceeds it — the denominator never understates the real window.
+              const observed = total > STANDARD_CONTEXT_LIMIT ? LARGE_CONTEXT_LIMIT : STANDARD_CONTEXT_LIMIT;
+              contextLimit = Math.max(contextLimit ?? 0, this.defaultContextLimit(), observed);
             }
           }
           break;
