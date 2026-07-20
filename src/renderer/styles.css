@@ -805,6 +805,22 @@ body {
   color: var(--accent-hover);
 }
 
+#status-model {
+  color: var(--text-secondary);
+}
+
+#status-context {
+  color: var(--text-secondary);
+}
+
+#status-context.status-context-warn {
+  color: var(--orange);
+}
+
+#status-context.status-context-danger {
+  color: var(--danger);
+}
+
 #status-title {
   color: var(--text-muted);
 }

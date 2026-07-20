@@ -30,6 +30,21 @@ export interface CodexSessionRef {
 
 export type CodexSessionStatus = 'running' | 'waiting';
 
+export interface CodexSessionRuntime {
+  status: CodexSessionStatus | null;
+  model?: string;
+  effort?: string;
+  contextTokens?: number;
+  contextLimit?: number;
+}
+
+interface RuntimeCacheEntry {
+  rolloutPath: string;
+  offset: number;
+  carry: Buffer;
+  runtime: CodexSessionRuntime;
+}
+
 interface PromptSummary {
   lastMeaningful: string | null;
   lastPrompt: string | null;
@@ -53,6 +68,7 @@ function getEnvValue(env: Record<string, string>, name: string): string | undefi
 export class CodexSessionTracker {
   private database: DatabaseSync | null = null;
   private databasePath: string | null = null;
+  private runtimeCache = new Map<SessionId, RuntimeCacheEntry>();
   private readonly codexHome: string;
   private readonly sqliteHome: string;
 
@@ -98,32 +114,51 @@ export class CodexSessionTracker {
    * A bounded tail read keeps the one-second inventory poll inexpensive for long sessions.
    */
   getSessionStatus(ref: CodexSessionRef): CodexSessionStatus | null {
-    if (!ref.rolloutPath) return null;
+    return this.getSessionRuntime(ref).status;
+  }
+
+  /**
+   * Incrementally reads structured rollout events for the status bar. The first call
+   * seeds from the transcript; subsequent one-second polls parse appended bytes only.
+   */
+  getSessionRuntime(ref: CodexSessionRef): CodexSessionRuntime {
+    if (!ref.rolloutPath) return { status: null };
 
     let handle: number | null = null;
     try {
       const stat = fs.statSync(ref.rolloutPath);
-      const maxBytes = 128 * 1024;
-      const bytesToRead = Math.min(stat.size, maxBytes);
-      const position = stat.size - bytesToRead;
-      const buffer = Buffer.alloc(bytesToRead);
-      handle = fs.openSync(ref.rolloutPath, 'r');
-      const bytesRead = fs.readSync(handle, buffer, 0, bytesToRead, position);
-      let tail = buffer.toString('utf-8', 0, bytesRead);
-
-      // A tail that starts partway through a JSONL row must discard that partial row.
-      if (position > 0) {
-        const firstNewline = tail.indexOf('\n');
-        if (firstNewline < 0) return null;
-        tail = tail.slice(firstNewline + 1);
+      let cached = this.runtimeCache.get(ref.sessionId);
+      if (!cached || cached.rolloutPath !== ref.rolloutPath || stat.size < cached.offset) {
+        cached = {
+          rolloutPath: ref.rolloutPath,
+          offset: 0,
+          carry: Buffer.alloc(0),
+          runtime: { status: 'waiting' },
+        };
       }
 
-      const status = detectCodexSessionStatus(tail);
-      // A new transcript with no turn yet is the idle composer. For a long transcript,
-      // preserve the previous state if the matching task_started event fell outside our tail.
-      return status ?? (stat.size <= maxBytes ? 'waiting' : null);
+      if (stat.size > cached.offset) {
+        const buffer = Buffer.alloc(stat.size - cached.offset);
+        handle = fs.openSync(ref.rolloutPath, 'r');
+        const bytesRead = fs.readSync(handle, buffer, 0, buffer.length, cached.offset);
+        const combined = Buffer.concat([cached.carry, buffer.subarray(0, bytesRead)]);
+        const lastNewline = combined.lastIndexOf(10);
+        if (lastNewline >= 0) {
+          cached.runtime = parseCodexSessionRuntime(
+            combined.subarray(0, lastNewline).toString('utf-8'),
+            cached.runtime,
+          );
+          cached.carry = combined.subarray(lastNewline + 1);
+        } else {
+          cached.carry = combined;
+        }
+        cached.offset += bytesRead;
+      }
+
+      this.runtimeCache.set(ref.sessionId, cached);
+      return { ...cached.runtime };
     } catch {
-      return null;
+      return this.runtimeCache.get(ref.sessionId)?.runtime ?? { status: null };
     } finally {
       if (handle !== null) fs.closeSync(handle);
     }
@@ -346,4 +381,62 @@ export function detectCodexSessionStatus(jsonl: string): CodexSessionStatus | nu
     }
   }
   return null;
+}
+
+/** Extract status-bar metadata from complete Codex rollout JSONL rows. */
+export function parseCodexSessionRuntime(
+  jsonl: string,
+  initial: CodexSessionRuntime = { status: null },
+): CodexSessionRuntime {
+  const runtime = { ...initial };
+  for (const line of jsonl.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line);
+      const payload = row?.payload;
+
+      if (row?.type === 'turn_context') {
+        if (typeof payload?.model === 'string' && payload.model) runtime.model = payload.model;
+        if (typeof payload?.effort === 'string' && payload.effort) runtime.effort = payload.effort;
+        continue;
+      }
+
+      if (row?.type !== 'event_msg') continue;
+      switch (payload?.type) {
+        case 'thread_settings_applied': {
+          const settings = payload.thread_settings;
+          if (typeof settings?.model === 'string' && settings.model) runtime.model = settings.model;
+          if (typeof settings?.reasoning_effort === 'string' && settings.reasoning_effort) {
+            runtime.effort = settings.reasoning_effort;
+          }
+          break;
+        }
+        case 'task_started':
+          runtime.status = 'running';
+          if (typeof payload.model_context_window === 'number' && payload.model_context_window > 0) {
+            runtime.contextLimit = payload.model_context_window;
+          }
+          break;
+        case 'task_complete':
+        case 'turn_aborted':
+          runtime.status = 'waiting';
+          break;
+        case 'token_count': {
+          const info = payload.info;
+          const used = info?.last_token_usage?.total_tokens;
+          const limit = info?.model_context_window;
+          if (typeof used === 'number' && Number.isFinite(used) && used > 0) {
+            runtime.contextTokens = used;
+          }
+          if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
+            runtime.contextLimit = limit;
+          }
+          break;
+        }
+      }
+    } catch {
+      // Ignore a concurrently written or incompatible row.
+    }
+  }
+  return runtime;
 }

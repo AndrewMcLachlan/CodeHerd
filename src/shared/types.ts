@@ -20,6 +20,14 @@ export interface TabState {
   createdAt: number;
   lastActivityAt: number;
   status: 'running' | 'stopped' | 'resuming' | 'waiting' | 'attention';
+  /** Raw id of the model last seen in this session's transcript (e.g. "claude-opus-4-8"). */
+  model?: string;
+  /** Tokens occupying the context window after the most recent agent turn. */
+  contextTokens?: number;
+  /** Effective context-window size reported or derived for the active model. */
+  contextLimit?: number;
+  /** Reasoning effort of the most recent assistant turn (e.g. "high"). */
+  effort?: string;
 }
 
 export interface RecentlyClosedTab {
@@ -130,6 +138,14 @@ export interface TabMetadataMessage {
   name?: string | null;
   /** Claude-only: present when /color sets or clears a color. `null` means cleared. */
   color?: string | null;
+  /** Present when the session's active model changes. Raw model id; the renderer formats it for display. */
+  model?: string;
+  /** Present when the context fill changes. */
+  contextTokens?: number;
+  /** Present alongside contextTokens: the effective window size it is measured against. */
+  contextLimit?: number;
+  /** Present when the reasoning effort of the most recent assistant turn changes (e.g. "high"). */
+  effort?: string;
 }
 
 /** Pushed when an agent assigns or switches the session backing a running tab. */

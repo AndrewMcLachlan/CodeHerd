@@ -2,9 +2,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 import { CLAUDE_HISTORY_FILE, CLAUDE_PROJECTS_DIR } from '../shared/constants';
-import type { AgentSession, AgentType, FolderPath } from '../shared/types';
+import type { AgentSession, AgentType, FolderPath, SessionId } from '../shared/types';
 import type { AgentRegistry } from './agent-registry';
-import { CodexSessionTracker, type CodexSessionRef, type CodexSessionStatus } from './codex-session-tracker';
+import {
+  CodexSessionTracker,
+  type CodexSessionRef,
+  type CodexSessionRuntime,
+  type CodexSessionStatus,
+} from './codex-session-tracker';
 
 interface SessionAccumulator {
   /** Most recent prompt that isn't a slash command */
@@ -36,6 +41,10 @@ export class SessionTracker {
 
   getCodexSessionStatus(ref: CodexSessionRef): CodexSessionStatus | null {
     return this.codex.getSessionStatus(ref);
+  }
+
+  getCodexSessionRuntime(ref: CodexSessionRef): CodexSessionRuntime {
+    return this.codex.getSessionRuntime(ref);
   }
 
   private async getClaudeSessionsForFolder(folder: FolderPath): Promise<AgentSession[]> {
@@ -109,6 +118,21 @@ export class SessionTracker {
 
     // Sort by timestamp descending (most recent first)
     return sessions.sort((a, b) => b.timestamp - a.timestamp);
+  }
+
+  /**
+   * Whether `claude --resume <sessionId>` would find a conversation for a session
+   * launched in `folder`. A tab opened but never used before the app closed has a
+   * session id Claude never persisted, so resuming it prints "No conversation found"
+   * into the tab — restore uses this to fall back to a fresh session instead.
+   */
+  async canResume(folder: FolderPath, sessionId: SessionId): Promise<boolean> {
+    const transcript = path.join(
+      CLAUDE_PROJECTS_DIR,
+      folder.replace(/[^a-zA-Z0-9]/g, '-'),
+      `${sessionId}.jsonl`,
+    );
+    return this.isResumable(transcript);
   }
 
   /**

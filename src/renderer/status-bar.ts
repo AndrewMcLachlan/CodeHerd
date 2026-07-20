@@ -1,14 +1,27 @@
 import type { GitInfo, TabId } from '../shared/types';
 
+/** Per-tab session indicators the status bar renders (model, context fill, reasoning effort). */
+export interface StatusMeta {
+  model?: string;
+  contextTokens?: number;
+  contextLimit?: number;
+  effort?: string;
+}
+
 export class StatusBar {
   private element: HTMLElement;
   private folderEl: HTMLElement;
   private gitEl: HTMLElement;
   private worktreeEl: HTMLElement;
   private titleEl: HTMLElement;
+  private modelEl: HTMLElement;
+  private contextEl: HTMLElement;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private currentFolder: string | null = null;
+  private currentTabId: TabId | null = null;
   private titles = new Map<TabId, string>();
+  /** Latest session indicators per tab, fed by both metadata events and tab seeds. */
+  private meta = new Map<TabId, StatusMeta>();
   /** Last-known git info per folder, so switching back to a folder paints instantly. */
   private gitCache = new Map<string, GitInfo>();
   /** Monotonic token: a refresh only paints if it's still the most recent one issued. */
@@ -20,13 +33,21 @@ export class StatusBar {
     this.gitEl = document.getElementById('status-git')!;
     this.worktreeEl = document.getElementById('status-worktree')!;
     this.titleEl = document.getElementById('status-title')!;
+    this.modelEl = document.getElementById('status-model')!;
+    this.contextEl = document.getElementById('status-context')!;
   }
 
   setTerminalTitle(tabId: TabId, title: string): void {
     this.titles.set(tabId, title);
   }
 
-  async update(folder: string | null, activeTabId: TabId | null): Promise<void> {
+  /** Record a tab's session indicators and repaint immediately if it's the one on screen. */
+  setMeta(tabId: TabId, meta: StatusMeta): void {
+    this.meta.set(tabId, meta);
+    if (tabId === this.currentTabId) this.applyMeta(meta);
+  }
+
+  async update(folder: string | null, activeTabId: TabId | null, meta?: StatusMeta): Promise<void> {
     if (!folder) {
       this.element.classList.add('hidden');
       this.stopPolling();
@@ -34,10 +55,15 @@ export class StatusBar {
     }
 
     this.element.classList.remove('hidden');
+    this.currentTabId = activeTabId;
 
     // Folder
     this.folderEl.textContent = this.shortenPath(folder);
     this.folderEl.title = folder;
+
+    // Session indicators (right side). A seed passed in from the tab keeps the map current on switches.
+    if (activeTabId && meta) this.meta.set(activeTabId, meta);
+    this.applyMeta(activeTabId ? this.meta.get(activeTabId) : undefined);
 
     // Terminal title (right side)
     const title = activeTabId ? this.titles.get(activeTabId) : null;
@@ -97,6 +123,46 @@ export class StatusBar {
   private clearGit(): void {
     this.gitEl.classList.add('hidden');
     this.worktreeEl.classList.add('hidden');
+  }
+
+  private applyMeta(meta: StatusMeta | undefined): void {
+    // Model (+ reasoning effort), e.g. "Opus 4.8 · high"
+    if (meta?.model) {
+      const effort = meta.effort ? ` · ${meta.effort}` : '';
+      this.modelEl.textContent = this.formatModelName(meta.model) + effort;
+      this.modelEl.title = meta.effort ? `${meta.model} · ${meta.effort} effort` : meta.model;
+      this.modelEl.classList.remove('hidden');
+    } else {
+      this.modelEl.classList.add('hidden');
+    }
+
+    // Context fill, e.g. "ctx 22%" — colour ramps as it approaches the window limit.
+    if (meta?.contextTokens && meta.contextLimit) {
+      const pct = Math.min(100, Math.max(0, Math.round((meta.contextTokens / meta.contextLimit) * 100)));
+      this.contextEl.textContent = `Context ${pct}% used`;
+      this.contextEl.title = `Context: ${meta.contextTokens.toLocaleString()} / ${meta.contextLimit.toLocaleString()} tokens`;
+      this.contextEl.classList.toggle('status-context-warn', pct >= 75 && pct < 90);
+      this.contextEl.classList.toggle('status-context-danger', pct >= 90);
+      this.contextEl.classList.remove('hidden');
+    } else {
+      this.contextEl.classList.add('hidden');
+    }
+  }
+
+  /**
+   * Turn a raw transcript model id into a compact label:
+   *   claude-opus-4-8            -> Opus 4.8
+   *   claude-haiku-4-5-20251001  -> Haiku 4.5   (trailing release date dropped)
+   *   claude-sonnet-5            -> Sonnet 5
+   * Derives the label generically so new models need no lookup table.
+   */
+  private formatModelName(id: string): string {
+    if (!id.startsWith('claude-')) return id;
+    const core = id.replace(/^claude-/, '').replace(/-\d{6,}$/, '');
+    const [family, ...version] = core.split('-');
+    if (!family) return id;
+    const name = family.charAt(0).toUpperCase() + family.slice(1);
+    return version.length ? `${name} ${version.join('.')}` : name;
   }
 
   private renderGit(git: GitInfo): string {
