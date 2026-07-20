@@ -1,16 +1,18 @@
 import * as pty from 'node-pty';
 import { execSync } from 'child_process';
-import type { TabId, FolderPath, SessionId } from '../shared/types';
+import type { AgentType, TabId, FolderPath, SessionId } from '../shared/types';
 import { v4 as uuidv4 } from 'uuid';
-import { getLoginShellEnv, resolveClaudePath } from './claude-cli';
+import { getLoginShellEnv } from './claude-cli';
+import { resolveCommandPath } from './agent-detection';
 
 interface PtyEntry {
   process: pty.IPty;
   sessionId: SessionId;
+  agent: AgentType;
 }
 
 export interface SpawnOptions {
-  /** Resume this session (`claude --resume`). Also becomes the tab's session id. */
+  /** Resume this session with the selected agent. Also becomes the tab's session id. */
   resumeSessionId?: SessionId;
   /**
    * Attach to a live background agent by job id (`claude attach`) instead of resuming.
@@ -21,8 +23,11 @@ export interface SpawnOptions {
   rows?: number;
 }
 
-/** The claude CLI invocation for a tab: attach, resume, or start fresh. */
-export function buildClaudeArgs(sessionId: SessionId, options: SpawnOptions): string[] {
+/** Agent CLI arguments for attaching, resuming, or starting a fresh session. */
+export function buildAgentArgs(agent: AgentType, sessionId: SessionId, options: SpawnOptions): string[] {
+  if (agent === 'codex') {
+    return options.resumeSessionId ? ['resume', options.resumeSessionId] : [];
+  }
   if (options.attachAgentId) {
     // A live background agent refuses --resume; attaching hands us the running session,
     // the same as picking it out of `claude agents`.
@@ -36,10 +41,10 @@ export class PtyManager {
   private ptys = new Map<TabId, PtyEntry>();
   private shellEnv = getLoginShellEnv();
 
-  spawn(tabId: TabId, folder: FolderPath, options: SpawnOptions = {}): { sessionId: SessionId } {
+  spawn(tabId: TabId, agent: AgentType, folder: FolderPath, options: SpawnOptions = {}): { sessionId: SessionId } {
     const { resumeSessionId, cols, rows } = options;
     const sessionId = resumeSessionId ?? uuidv4();
-    const args = buildClaudeArgs(sessionId, options);
+    const args = buildAgentArgs(agent, sessionId, options);
 
     // On Windows, spawn via cmd.exe so node-pty gets a proper console.
     // On macOS/Linux, use the user's login shell so their PATH is loaded
@@ -48,13 +53,14 @@ export class PtyManager {
     const userShell = process.env.SHELL || '/bin/zsh';
     const shell = isWin ? 'cmd.exe' : userShell;
 
-    // Resolve claude's full path from the login shell env, since the
+    // Resolve the agent's full path from the login shell env, since the
     // non-interactive PTY shell may not have it on PATH.
-    const claudePath = resolveClaudePath();
+    const agentPath = isWin ? agent : (resolveCommandPath(agent, this.shellEnv) || agent);
+    const quote = (value: string) => `'${value.replace(/'/g, `'"'"'`)}'`;
 
     const shellArgs = isWin
-      ? ['/c', claudePath, ...args]
-      : ['-l', '-c', `${claudePath} ${args.join(' ')}`];
+      ? ['/c', agentPath, ...args]
+      : ['-l', '-c', [agentPath, ...args].map(quote).join(' ')];
 
     const ptyProcess = pty.spawn(shell, shellArgs, {
       name: 'xterm-256color',
@@ -64,7 +70,7 @@ export class PtyManager {
       env: { ...this.shellEnv, TERM: 'xterm-256color', SHELL: userShell },
     });
 
-    this.ptys.set(tabId, { process: ptyProcess, sessionId });
+    this.ptys.set(tabId, { process: ptyProcess, sessionId, agent });
     return { sessionId };
   }
 
@@ -110,7 +116,7 @@ export class PtyManager {
     }
   }
 
-  /** Graceful shutdown: double Ctrl+C to quit, tree-kill as fallback */
+  /** Graceful agent shutdown, with process-tree kill as a bounded fallback. */
   gracefulKill(tabId: TabId): Promise<void> {
     const entry = this.ptys.get(tabId);
     if (!entry) return Promise.resolve();
@@ -130,10 +136,20 @@ export class PtyManager {
       // Listen for process exit
       entry.process.onExit(() => done());
 
-      // Double Ctrl+C in quick succession signals Claude Code to quit
+      // Claude exits on a double interrupt. Codex documents /quit; interrupt first so
+      // an in-flight turn returns to the composer before sending the command.
       try {
-        entry.process.write('\x03');
-        entry.process.write('\x03');
+        if (entry.agent === 'codex') {
+          entry.process.write('\x03');
+          setTimeout(() => {
+            if (!resolved) {
+              try { entry.process.write('/quit\r'); } catch { done(); }
+            }
+          }, 150);
+        } else {
+          entry.process.write('\x03');
+          entry.process.write('\x03');
+        }
       } catch {
         // Process may already be dead
         done();
@@ -157,5 +173,10 @@ export class PtyManager {
 
   getSessionId(tabId: TabId): SessionId | undefined {
     return this.ptys.get(tabId)?.sessionId;
+  }
+
+  setSessionId(tabId: TabId, sessionId: SessionId): void {
+    const entry = this.ptys.get(tabId);
+    if (entry) entry.sessionId = sessionId;
   }
 }

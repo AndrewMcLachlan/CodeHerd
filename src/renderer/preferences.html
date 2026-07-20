@@ -28,6 +28,7 @@
       color: var(--text-secondary);
       flex-shrink: 0;
       position: relative;
+      border-bottom: 1px solid var(--border);
     }
     #close-btn {
       position: absolute;
@@ -48,31 +49,83 @@
     #close-btn:hover { background: var(--danger); color: var(--bg-base); }
     #content {
       flex: 1;
-      padding: 24px 32px;
+      min-height: 0;
+      padding: 20px 24px 24px;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 16px;
+      overflow-y: auto;
     }
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+    #content::-webkit-scrollbar { width: 8px; }
+    #content::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
     }
-    .field label {
-      font-size: 13px;
-      color: var(--text-secondary);
+    .settings-section {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      flex-shrink: 0;
     }
-    .field .hint {
+    .section-header {
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-header h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .section-header p {
+      margin-top: 3px;
       font-size: 11px;
-      color: var(--text-secondary);
+      line-height: 1.4;
+      color: var(--text-muted);
     }
-    .checkbox-field {
-      flex-direction: row;
+    .section-body {
+      display: flex;
+      flex-direction: column;
+    }
+    .setting-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 230px;
       align-items: center;
+      gap: 20px;
+      padding: 12px 16px;
+    }
+    .setting-row + .setting-row {
+      border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    }
+    .setting-row.stacked {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
       gap: 10px;
     }
-    .checkbox-field label {
-      cursor: pointer;
+    .setting-copy {
+      min-width: 0;
+    }
+    .setting-copy label,
+    .setting-copy .label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+    .hint {
+      display: block;
+      margin-top: 3px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--text-muted);
+    }
+    .setting-control {
+      width: 100%;
+      min-width: 0;
+    }
+    .checkbox-control {
+      display: flex;
+      justify-content: flex-end;
     }
     input[type="checkbox"] {
       width: 16px;
@@ -80,7 +133,8 @@
       accent-color: var(--accent);
       cursor: pointer;
     }
-    select, input[type="text"] {
+    select, input[type="text"], input[type="number"] {
+      width: 100%;
       background: var(--bg-overlay);
       color: var(--text-primary);
       border: 1px solid var(--border);
@@ -90,24 +144,96 @@
       font-family: inherit;
       outline: none;
     }
-    select:focus, input[type="text"]:focus {
+    select:focus, input[type="text"]:focus, input[type="number"]:focus {
       border-color: var(--accent);
     }
     select option {
       background: var(--bg-overlay);
       color: var(--text-primary);
     }
-    #custom-font-row {
-      margin-top: 6px;
+    #custom-font-row { margin-top: 8px; }
+    .number-control {
+      display: flex;
+      align-items: center;
+      gap: 9px;
     }
-    #custom-font-row input {
-      width: 100%;
+    .number-control input { min-width: 0; }
+    .number-unit {
+      width: 18px;
+      color: var(--text-secondary);
+      font-size: 12px;
     }
+    .colour-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .colour-field {
+      padding: 10px;
+      background: var(--bg-overlay);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .colour-field-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .colour-field-header label {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .colour-source {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+    .colour-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    input[type="color"] {
+      width: 34px;
+      height: 30px;
+      padding: 0;
+      border: none;
+      background: none;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type="color"]::-webkit-color-swatch {
+      border: 1px solid var(--border);
+      border-radius: 5px;
+    }
+    .colour-value {
+      flex: 1;
+      color: var(--text-secondary);
+      font-family: 'Cascadia Code', Consolas, monospace;
+      font-size: 11px;
+    }
+    .terminal-preview {
+      grid-column: 1 / -1;
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font: 12px/1.5 'Cascadia Code', Consolas, monospace;
+      transition: color 0.12s, background 0.12s;
+    }
+    .terminal-preview .prompt { color: var(--accent); margin-right: 8px; }
     #buttons {
       display: flex;
       justify-content: flex-end;
       gap: 10px;
-      padding: 0 32px 20px;
+      padding: 14px 24px;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
     }
     button {
       padding: 8px 20px;
@@ -119,6 +245,11 @@
       cursor: pointer;
     }
     button:hover { background: var(--border); }
+    button:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+    button:disabled:hover { background: var(--bg-overlay); }
     #save-btn {
       background: var(--accent);
       color: var(--bg-base);
@@ -146,7 +277,12 @@
       font-size: 12px;
       white-space: nowrap;
     }
-    .field .hint.error { color: var(--danger); }
+    .hint.error { color: var(--danger); }
+    .small-btn {
+      padding: 5px 8px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -155,53 +291,155 @@
     <button id="close-btn">&times;</button>
   </div>
   <div id="content">
-    <div class="field">
-      <label for="theme-select">Theme</label>
-      <select id="theme-select">
-        <option value="dark">Dark</option>
-        <option value="light">Light</option>
-        <option value="system">System</option>
-      </select>
-    </div>
-    <div class="field checkbox-field">
-      <input type="checkbox" id="warn-close" checked>
-      <label for="warn-close">Warn before closing tabs</label>
-    </div>
-    <div class="field">
-      <label for="tab-switch-select">Ctrl+Tab behaviour</label>
-      <select id="tab-switch-select">
-        <option value="mru">Most recently used</option>
-        <option value="sequential">Sequential (tab bar order)</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="new-tab-shortcut">New Tab shortcut</label>
-      <div class="shortcut-capture">
-        <input type="text" id="new-tab-shortcut" readonly placeholder="Click and press keys…">
-        <button type="button" class="link-btn" id="shortcut-reset">Reset</button>
-        <button type="button" class="link-btn" id="shortcut-disable">Disable</button>
+    <section class="settings-section">
+      <header class="section-header">
+        <h2>Appearance</h2>
+        <p>Choose the application theme and customise the terminal surface.</p>
+      </header>
+      <div class="section-body">
+        <div class="setting-row">
+          <div class="setting-copy">
+            <label for="theme-select">Theme</label>
+            <span class="hint">Controls CodeHerd and the default terminal palette.</span>
+          </div>
+          <div class="setting-control">
+            <select id="theme-select">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="system">System</option>
+            </select>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-copy">
+            <label for="font-select">Terminal font</label>
+            <span class="hint">Applied to every open and new terminal.</span>
+          </div>
+          <div class="setting-control">
+            <select id="font-select">
+              <option value="">System default</option>
+              <option value="Cascadia Code">Cascadia Code</option>
+              <option value="Cascadia Mono">Cascadia Mono</option>
+              <option value="Consolas">Consolas</option>
+              <option value="Fira Code">Fira Code</option>
+              <option value="JetBrains Mono">JetBrains Mono</option>
+              <option value="Menlo">Menlo</option>
+              <option value="Monaco">Monaco</option>
+              <option value="Source Code Pro">Source Code Pro</option>
+              <option value="Ubuntu Mono">Ubuntu Mono</option>
+              <option value="__custom__">Custom...</option>
+            </select>
+            <div id="custom-font-row" style="display:none">
+              <input type="text" id="custom-font" placeholder="Enter font family name">
+            </div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-copy">
+            <label for="font-size">Terminal font size</label>
+            <span class="hint">Specified in points; 12pt matches the Windows Terminal default.</span>
+          </div>
+          <div class="setting-control number-control">
+            <input type="number" id="font-size" min="6" max="72" step="0.5" value="12">
+            <span class="number-unit">pt</span>
+          </div>
+        </div>
+        <div class="setting-row stacked">
+          <div class="setting-copy">
+            <span class="label">Terminal colours</span>
+            <span class="hint">Custom values override the active theme. Reset either colour to follow the theme again.</span>
+          </div>
+          <div class="colour-grid">
+            <div class="colour-field">
+              <div class="colour-field-header">
+                <label for="terminal-foreground">Foreground</label>
+                <span class="colour-source" id="foreground-source">Theme</span>
+              </div>
+              <div class="colour-control">
+                <input type="color" id="terminal-foreground" aria-label="Terminal foreground colour">
+                <span class="colour-value" id="foreground-value"></span>
+                <button type="button" class="small-btn" id="foreground-reset">Reset</button>
+              </div>
+            </div>
+            <div class="colour-field">
+              <div class="colour-field-header">
+                <label for="terminal-background">Background</label>
+                <span class="colour-source" id="background-source">Theme</span>
+              </div>
+              <div class="colour-control">
+                <input type="color" id="terminal-background" aria-label="Terminal background colour">
+                <span class="colour-value" id="background-value"></span>
+                <button type="button" class="small-btn" id="background-reset">Reset</button>
+              </div>
+            </div>
+            <div class="terminal-preview" id="terminal-preview">
+              <span class="prompt">›</span><span>CodeHerd terminal preview</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <span class="hint" id="shortcut-hint">Click the field and press a combination. Disable to send Ctrl+T to Claude Code (show/hide sub-agent tasks).</span>
-    </div>
-    <div class="field">
-      <label for="font-select">Terminal font</label>
-      <select id="font-select">
-        <option value="">System default</option>
-        <option value="Cascadia Code">Cascadia Code</option>
-        <option value="Cascadia Mono">Cascadia Mono</option>
-        <option value="Consolas">Consolas</option>
-        <option value="Fira Code">Fira Code</option>
-        <option value="JetBrains Mono">JetBrains Mono</option>
-        <option value="Menlo">Menlo</option>
-        <option value="Monaco">Monaco</option>
-        <option value="Source Code Pro">Source Code Pro</option>
-        <option value="Ubuntu Mono">Ubuntu Mono</option>
-        <option value="__custom__">Custom...</option>
-      </select>
-      <div id="custom-font-row" style="display:none">
-        <input type="text" id="custom-font" placeholder="Enter font family name">
+    </section>
+
+    <section class="settings-section">
+      <header class="section-header">
+        <h2>Behaviour</h2>
+        <p>Control how tabs open, switch, and close.</p>
+      </header>
+      <div class="section-body">
+        <div class="setting-row">
+          <div class="setting-copy">
+            <label for="default-agent-select">Default agent</label>
+            <span class="hint">Focused first when both agents are available.</span>
+          </div>
+          <div class="setting-control">
+            <select id="default-agent-select">
+              <option value="claude">Claude Code</option>
+              <option value="codex">Codex</option>
+            </select>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-copy">
+            <label for="tab-switch-select">Ctrl+Tab behaviour</label>
+          </div>
+          <div class="setting-control">
+            <select id="tab-switch-select">
+              <option value="mru">Most recently used</option>
+              <option value="sequential">Sequential (tab bar order)</option>
+            </select>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-copy">
+            <label for="warn-close">Warn before closing active sessions</label>
+            <span class="hint">Ask for confirmation while an agent is working.</span>
+          </div>
+          <div class="checkbox-control">
+            <input type="checkbox" id="warn-close" checked>
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
+
+    <section class="settings-section">
+      <header class="section-header">
+        <h2>Shortcuts</h2>
+        <p>Configure CodeHerd shortcuts without taking useful keys away from the terminal.</p>
+      </header>
+      <div class="section-body">
+        <div class="setting-row stacked">
+          <div class="setting-copy">
+            <label for="new-tab-shortcut">New Tab</label>
+          </div>
+          <div class="shortcut-capture">
+            <input type="text" id="new-tab-shortcut" readonly placeholder="Click and press keys…">
+            <button type="button" class="link-btn" id="shortcut-reset">Reset</button>
+            <button type="button" class="link-btn" id="shortcut-disable">Disable</button>
+          </div>
+          <span class="hint" id="shortcut-hint">Click the field and press a combination. Disable to send Ctrl+T to the active CLI agent.</span>
+        </div>
+      </div>
+    </section>
   </div>
   <div id="buttons">
     <button id="cancel-btn">Cancel</button>
@@ -209,16 +447,76 @@
   </div>
   <script>
     // Apply theme before paint
-    if (window.preferencesAPI?.getTheme) {
-      document.documentElement.dataset.theme = window.preferencesAPI.getTheme();
-    }
+    const resolvedTheme = window.preferencesAPI?.getTheme?.() || 'dark';
+    document.documentElement.dataset.theme = resolvedTheme;
 
     const warnClose = document.getElementById('warn-close');
     const fontSelect = document.getElementById('font-select');
+    const fontSizeInput = document.getElementById('font-size');
     const themeSelect = document.getElementById('theme-select');
+    const defaultAgentSelect = document.getElementById('default-agent-select');
     const tabSwitchSelect = document.getElementById('tab-switch-select');
     const customFontRow = document.getElementById('custom-font-row');
     const customFont = document.getElementById('custom-font');
+    const foregroundInput = document.getElementById('terminal-foreground');
+    const backgroundInput = document.getElementById('terminal-background');
+    const foregroundValue = document.getElementById('foreground-value');
+    const backgroundValue = document.getElementById('background-value');
+    const foregroundSource = document.getElementById('foreground-source');
+    const backgroundSource = document.getElementById('background-source');
+    const foregroundReset = document.getElementById('foreground-reset');
+    const backgroundReset = document.getElementById('background-reset');
+    const terminalPreview = document.getElementById('terminal-preview');
+
+    const TERMINAL_DEFAULTS = {
+      dark: { foreground: '#cdd6f4', background: '#1e1e2e' },
+      light: { foreground: '#4c4f69', background: '#eff1f5' },
+    };
+    const validColour = (value) => /^#[0-9a-f]{6}$/i.test(value || '');
+    const normalizeFontSize = (value) => {
+      const points = Number(value);
+      return Number.isFinite(points) ? Math.min(72, Math.max(6, points)) : 12;
+    };
+    let terminalForeground = '';
+    let terminalBackground = '';
+
+    const selectedThemeDefaults = () => {
+      const selected = themeSelect.value === 'system' ? resolvedTheme : themeSelect.value;
+      return TERMINAL_DEFAULTS[selected] || TERMINAL_DEFAULTS.dark;
+    };
+    const renderTerminalColours = () => {
+      const defaults = selectedThemeDefaults();
+      const foreground = terminalForeground || defaults.foreground;
+      const background = terminalBackground || defaults.background;
+      foregroundInput.value = foreground;
+      backgroundInput.value = background;
+      foregroundValue.textContent = foreground;
+      backgroundValue.textContent = background;
+      foregroundSource.textContent = terminalForeground ? 'Custom' : 'Theme';
+      backgroundSource.textContent = terminalBackground ? 'Custom' : 'Theme';
+      foregroundReset.disabled = !terminalForeground;
+      backgroundReset.disabled = !terminalBackground;
+      terminalPreview.style.color = foreground;
+      terminalPreview.style.background = background;
+    };
+
+    foregroundInput.addEventListener('input', () => {
+      terminalForeground = foregroundInput.value.toLowerCase();
+      renderTerminalColours();
+    });
+    backgroundInput.addEventListener('input', () => {
+      terminalBackground = backgroundInput.value.toLowerCase();
+      renderTerminalColours();
+    });
+    foregroundReset.addEventListener('click', () => {
+      terminalForeground = '';
+      renderTerminalColours();
+    });
+    backgroundReset.addEventListener('click', () => {
+      terminalBackground = '';
+      renderTerminalColours();
+    });
+    themeSelect.addEventListener('change', renderTerminalColours);
 
     // --- New Tab shortcut: VS Code-style key capture (#69) ---
     const isMac = navigator.platform.startsWith('Mac');
@@ -254,7 +552,7 @@
       shortcutHint.textContent = text;
       shortcutHint.classList.toggle('error', !!isError);
     };
-    const DEFAULT_HINT = 'Click the field and press a combination. Disable to send Ctrl+T to Claude Code (show/hide sub-agent tasks).';
+    const DEFAULT_HINT = 'Click the field and press a combination. Disable to send Ctrl+T to the active CLI agent.';
 
     shortcutInput.addEventListener('focus', () => {
       capturing = true;
@@ -315,10 +613,26 @@
     });
 
     // Load current preferences
-    window.preferencesAPI.getPreferences().then((prefs) => {
+    Promise.all([
+      window.preferencesAPI.getPreferences(),
+      window.preferencesAPI.getAvailableAgents(),
+    ]).then(([prefs, agents]) => {
       warnClose.checked = prefs.warnBeforeClosingTabs;
       themeSelect.value = prefs.theme || 'dark';
+      fontSizeInput.value = String(normalizeFontSize(prefs.fontSize));
+      terminalForeground = validColour(prefs.terminalForeground) ? prefs.terminalForeground.toLowerCase() : '';
+      terminalBackground = validColour(prefs.terminalBackground) ? prefs.terminalBackground.toLowerCase() : '';
+      renderTerminalColours();
       tabSwitchSelect.value = prefs.tabSwitchMode || 'mru';
+      for (const option of defaultAgentSelect.options) {
+        const available = !!agents[option.value];
+        option.disabled = !available;
+        option.textContent = `${option.value === 'codex' ? 'Codex' : 'Claude Code'}${available ? '' : ' (not detected)'}`;
+      }
+      const preferredAgent = prefs.defaultAgent || 'claude';
+      defaultAgentSelect.value = agents[preferredAgent]
+        ? preferredAgent
+        : (agents.claude ? 'claude' : (agents.codex ? 'codex' : preferredAgent));
       shortcutValue = prefs.newTabShortcut || DEFAULT_SHORTCUT;
       renderShortcut();
       // Check if font matches a preset option
@@ -340,9 +654,13 @@
       window.preferencesAPI.savePreferences({
         warnBeforeClosingTabs: warnClose.checked,
         fontFamily,
+        fontSize: normalizeFontSize(fontSizeInput.value),
+        terminalForeground,
+        terminalBackground,
         theme: themeSelect.value,
         tabSwitchMode: tabSwitchSelect.value,
         newTabShortcut: shortcutValue,
+        defaultAgent: defaultAgentSelect.value,
       }).then(() => {
         window.preferencesAPI.closeWindow();
       });

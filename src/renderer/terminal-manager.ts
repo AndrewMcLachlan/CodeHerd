@@ -54,8 +54,35 @@ interface TerminalEntry {
   terminal: Terminal;
   fitAddon: FitAddon;
   element: HTMLDivElement;
+  cursorSuppressed: boolean;
   /** Mutable reference so closures always see the current tab ID */
   ref: { tabId: TabId };
+}
+
+const HIDDEN_CURSOR = 'rgba(0, 0, 0, 0)';
+export const DEFAULT_TERMINAL_FONT_SIZE_POINTS = 12;
+const MIN_TERMINAL_FONT_SIZE_POINTS = 6;
+const MAX_TERMINAL_FONT_SIZE_POINTS = 72;
+const CSS_PIXELS_PER_POINT = 96 / 72;
+
+function normalizeFontSizePoints(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_TERMINAL_FONT_SIZE_POINTS;
+  }
+  return Math.min(MAX_TERMINAL_FONT_SIZE_POINTS, Math.max(MIN_TERMINAL_FONT_SIZE_POINTS, value));
+}
+
+function pointsToCssPixels(points: number): number {
+  return points * CSS_PIXELS_PER_POINT;
+}
+
+function withCursorVisibility(theme: ITheme, suppressed: boolean): ITheme {
+  if (!suppressed) return theme;
+  return {
+    ...theme,
+    cursor: HIDDEN_CURSOR,
+    cursorAccent: HIDDEN_CURSOR,
+  };
 }
 
 export class TerminalManager {
@@ -63,7 +90,11 @@ export class TerminalManager {
   private container: HTMLElement;
   private onTitleChangeCallback: ((tabId: TabId, title: string) => void) | null = null;
   private fontFamily = "'Cascadia Code', 'Fira Code', Consolas, monospace";
+  private fontSizePoints = DEFAULT_TERMINAL_FONT_SIZE_POINTS;
+  private fontRefitRequest: number | null = null;
   private currentTheme: ResolvedTheme = 'dark';
+  private terminalForeground = '';
+  private terminalBackground = '';
   private newTabShortcut: NewTabShortcut = DEFAULT_NEW_TAB_SHORTCUT;
 
   constructor() {
@@ -86,9 +117,11 @@ export class TerminalManager {
 
     const terminal = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
+      cursorStyle: 'bar',
+      cursorWidth: 1,
+      fontSize: pointsToCssPixels(this.fontSizePoints),
       fontFamily: this.fontFamily,
-      theme: this.currentTheme === 'light' ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME,
+      theme: this.getTerminalTheme(),
       // Generous scrollback: xterm clears the selection when selected rows
       // are trimmed out of scrollback, which made copy flaky during
       // long streaming output (#59)
@@ -241,7 +274,7 @@ export class TerminalManager {
       }
     });
 
-    this.terminals.set(tabId, { terminal, fitAddon, element, ref });
+    this.terminals.set(tabId, { terminal, fitAddon, element, cursorSuppressed: false, ref });
 
     return terminal;
   }
@@ -297,13 +330,64 @@ export class TerminalManager {
     for (const entry of this.terminals.values()) {
       entry.terminal.options.fontFamily = this.fontFamily;
     }
+    this.refitVisibleTerminals();
+  }
+
+  setFontSize(points: number | undefined): void {
+    this.fontSizePoints = normalizeFontSizePoints(points);
+    const pixels = pointsToCssPixels(this.fontSizePoints);
+    for (const entry of this.terminals.values()) {
+      entry.terminal.options.fontSize = pixels;
+    }
+    this.refitVisibleTerminals();
+  }
+
+  private refitVisibleTerminals(): void {
+    if (this.fontRefitRequest !== null) cancelAnimationFrame(this.fontRefitRequest);
+    this.fontRefitRequest = requestAnimationFrame(() => {
+      this.fontRefitRequest = null;
+      for (const entry of this.terminals.values()) {
+        if (entry.element.style.display === 'none') continue;
+        entry.fitAddon.fit();
+        window.codeherd.resizeTab(entry.ref.tabId, entry.terminal.cols, entry.terminal.rows);
+      }
+    });
+  }
+
+  setColors(foreground: string | undefined, background: string | undefined): void {
+    this.terminalForeground = foreground?.trim() ?? '';
+    this.terminalBackground = background?.trim() ?? '';
+    for (const entry of this.terminals.values()) {
+      entry.terminal.options.theme = withCursorVisibility(this.getTerminalTheme(), entry.cursorSuppressed);
+    }
+  }
+
+  private getTerminalTheme(): ITheme {
+    const base = this.currentTheme === 'light' ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME;
+    return {
+      ...base,
+      ...(this.terminalForeground ? { foreground: this.terminalForeground } : {}),
+      ...(this.terminalBackground ? { background: this.terminalBackground } : {}),
+    };
+  }
+
+  /**
+   * Codex repeatedly shows the terminal cursor between animated redraw frames. While a
+   * turn is active, hide that cursor at the renderer level; restore it at the composer.
+   */
+  setCursorSuppressed(tabId: TabId, suppressed: boolean): void {
+    const entry = this.terminals.get(tabId);
+    if (!entry || entry.cursorSuppressed === suppressed) return;
+    entry.cursorSuppressed = suppressed;
+    entry.terminal.options.cursorBlink = !suppressed;
+    entry.terminal.options.theme = withCursorVisibility(this.getTerminalTheme(), suppressed);
   }
 
   setTheme(theme: ResolvedTheme): void {
     this.currentTheme = theme;
-    const xtermTheme = theme === 'light' ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME;
+    const xtermTheme = this.getTerminalTheme();
     for (const entry of this.terminals.values()) {
-      entry.terminal.options.theme = xtermTheme;
+      entry.terminal.options.theme = withCursorVisibility(xtermTheme, entry.cursorSuppressed);
     }
   }
 }

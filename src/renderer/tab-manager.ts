@@ -1,6 +1,8 @@
-import type { TabId, TabMetadataMessage, TabState, TabSwitchMode } from '../shared/types';
+import type { AgentAvailability, AgentType, TabId, TabMetadataMessage, TabSessionMessage, TabState, TabSwitchMode } from '../shared/types';
+import { getNewTabMenuOptions, resolveDefaultAgent, type NewTabMenuOption } from '../shared/agents';
 import { TerminalManager } from './terminal-manager';
 import { SessionPicker } from './session-picker';
+import { createAgentIcon } from './agent-icon';
 
 /**
  * Map Claude Code's named colors (e.g. "red") to catppuccin hex values that harmonise with the
@@ -44,10 +46,14 @@ export class TabManager {
   private sessionPicker = new SessionPicker();
   private mruHistory: TabId[] = [];
   private tabSwitchMode: TabSwitchMode = 'mru';
+  private availableAgents: AgentAvailability;
+  private defaultAgent: AgentType;
 
-  constructor(terminalManager: TerminalManager) {
+  constructor(terminalManager: TerminalManager, availableAgents: AgentAvailability, defaultAgent: AgentType) {
     this.tabBar = document.getElementById('tab-bar')!;
     this.terminalManager = terminalManager;
+    this.availableAgents = availableAgents;
+    this.defaultAgent = defaultAgent;
     this.initDragListeners();
   }
 
@@ -75,7 +81,15 @@ export class TabManager {
     this.tabSwitchMode = mode;
   }
 
-  async createTab(folder: string, resumeSessionId?: string): Promise<TabState> {
+  setDefaultAgent(agent: AgentType): void {
+    this.defaultAgent = agent;
+  }
+
+  getNewTabMenuOptions(): NewTabMenuOption[] {
+    return getNewTabMenuOptions(this.availableAgents, this.defaultAgent);
+  }
+
+  async createTab(folder: string, agent: AgentType, resumeSessionId?: string): Promise<TabState> {
     // Generate the tab ID here so the terminal is ready before the PTY spawns
     const tabId = crypto.randomUUID();
 
@@ -88,13 +102,20 @@ export class TabManager {
     const dims = this.terminalManager.getDimensions(tabId);
 
     // Spawn the PTY with the same tabId and correct dimensions
-    const tab = await window.codeherd.createTab({
-      tabId,
-      folder,
-      resumeSessionId,
-      cols: dims?.cols,
-      rows: dims?.rows,
-    });
+    let tab: TabState;
+    try {
+      tab = await window.codeherd.createTab({
+        tabId,
+        agent,
+        folder,
+        resumeSessionId,
+        cols: dims?.cols,
+        rows: dims?.rows,
+      });
+    } catch (error) {
+      this.terminalManager.dispose(tabId);
+      throw error;
+    }
 
     this.tabs.set(tab.id, tab);
     this.renderTab(tab);
@@ -139,7 +160,8 @@ export class TabManager {
 
     // Confirm if the tab is still running and the preference is enabled
     if (this.warnBeforeClose && closedTab && closedTab.status === 'running') {
-      if (!confirm(`Close "${closedTab.label}"? The Claude session will be stopped.`)) {
+      const agentLabel = closedTab.agent === 'codex' ? 'Codex' : 'Claude Code';
+      if (!confirm(`Close "${closedTab.label}"? The ${agentLabel} session will be stopped.`)) {
         return;
       }
     }
@@ -174,8 +196,8 @@ export class TabManager {
   }
 
   /**
-   * Apply a metadata update pushed from the main process (driven by Claude Code's
-   * `/rename` and `/color` slash commands writing to the session file).
+   * Apply a metadata update pushed from the main process (Claude `/rename` and `/color`,
+   * or a Codex thread-title update).
    * Updates the in-memory tab and the DOM; persistence lives in the main process.
    */
   applyMetadata(msg: TabMetadataMessage): void {
@@ -200,6 +222,11 @@ export class TabManager {
     }
   }
 
+  updateSession(msg: TabSessionMessage): void {
+    const tab = this.tabs.get(msg.tabId);
+    if (tab) tab.sessionId = msg.sessionId;
+  }
+
   private applyColorToElement(el: HTMLElement, color: string | undefined): void {
     if (color) {
       el.dataset.colored = 'true';
@@ -214,6 +241,10 @@ export class TabManager {
     const tab = this.tabs.get(tabId);
     if (tab) {
       tab.status = status;
+      this.terminalManager.setCursorSuppressed(
+        tabId,
+        tab.agent === 'codex' && status === 'running',
+      );
     }
     const tabEl = this.tabBar.querySelector(`[data-tab-id="${tabId}"]`);
     if (tabEl) {
@@ -361,8 +392,11 @@ export class TabManager {
     const el = document.createElement('div');
     el.className = 'tab';
     el.dataset.tabId = tab.id;
+    el.dataset.agent = tab.agent;
     el.title = tab.launchFolder;
     this.applyColorToElement(el, tab.color);
+
+    const agentIcon = createAgentIcon(tab.agent);
 
     const label = document.createElement('span');
     label.className = 'tab-label';
@@ -373,6 +407,7 @@ export class TabManager {
     close.textContent = '\u00d7';
     close.title = 'Close';
 
+    el.appendChild(agentIcon);
     el.appendChild(label);
     el.appendChild(close);
 
@@ -388,6 +423,7 @@ export class TabManager {
     });
 
     this.tabBar.appendChild(el);
+    this.updateStatus(tab.id, tab.status);
   }
 
   private hideEmptyState(): void {
@@ -401,7 +437,7 @@ export class TabManager {
       container.innerHTML = `
         <div id="empty-state">
           <h2>CodeHerd</h2>
-          <p>Click + or press Ctrl+T to open a new Claude Code session</p>
+          <p>Click + or press Ctrl+T to open a new agent session</p>
           <button id="open-first-tab">Open a Folder</button>
         </div>
       `;
@@ -415,6 +451,7 @@ export class TabManager {
     const tabId = crypto.randomUUID();
     const tab: TabState = {
       id: tabId,
+      agent: 'claude',
       launchFolder: '/mock',
       currentFolder: '/mock',
       sessionId: 'mock',
@@ -474,23 +511,28 @@ export class TabManager {
     return Array.from(this.tabs.keys());
   }
 
-  async openNewTab(): Promise<void> {
+  async openNewTab(requestedAgent?: AgentType): Promise<void> {
+    const agent = requestedAgent && this.availableAgents[requestedAgent]
+      ? requestedAgent
+      : resolveDefaultAgent(this.availableAgents, this.defaultAgent);
+    if (!agent) return;
+
     const folder = await window.codeherd.pickFolder();
     if (!folder) return;
 
-    const sessions = await window.codeherd.listSessions(folder);
+    const sessions = await window.codeherd.listSessions(folder, agent);
     if (sessions.length === 0) {
-      await this.createTab(folder);
+      await this.createTab(folder, agent);
       return;
     }
 
     const folderName = folder.replace(/\\/g, '/').split('/').pop() || folder;
-    const result = await this.sessionPicker.show(sessions, folderName);
+    const result = await this.sessionPicker.show(sessions, folderName, agent);
 
     if (result.action === 'resume' && result.sessionId) {
-      await this.createTab(folder, result.sessionId);
+      await this.createTab(folder, agent, result.sessionId);
     } else if (result.action === 'new') {
-      await this.createTab(folder);
+      await this.createTab(folder, agent);
     }
     // 'cancel' — do nothing
   }

@@ -2,10 +2,11 @@ import { ipcMain, BrowserWindow, dialog, clipboard, app, shell, nativeTheme } fr
 import * as path from 'path';
 import * as fs from 'fs';
 import { IPC } from '../shared/ipc-channels';
-import type { TabState, TabCreateRequest, RecentlyClosedTab, Preferences, ThemePreference, ResolvedTheme, TabMetadataMessage } from '../shared/types';
+import type { AgentType, TabState, TabCreateRequest, RecentlyClosedTab, Preferences, ThemePreference, ResolvedTheme, TabMetadataMessage } from '../shared/types';
 import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
 import { SessionTracker } from './session-tracker';
+import type { CodexSessionRef } from './codex-session-tracker';
 import { SessionMetadataWatcher } from './session-metadata-watcher';
 import { HistoryWatcher } from './history-watcher';
 import { AgentRegistry } from './agent-registry';
@@ -36,11 +37,12 @@ export function registerIpcHandlers(
   const tabs = new Map<string, TabState>();
   const agentRegistry = new AgentRegistry();
   const sessionTracker = new SessionTracker(agentRegistry);
+  const availableAgents = detectAvailableAgents();
 
   // Restoring tabs is the first thing the renderer does, and each one needs to know
   // whether its session is a live background agent — warm the cache now so it doesn't
   // wait on the lookup.
-  agentRegistry.prime();
+  if (availableAgents.claude) agentRegistry.prime();
 
   function safeSend(channel: string, ...args: unknown[]): void {
     const win = getMainWindow();
@@ -74,7 +76,11 @@ export function registerIpcHandlers(
   });
   metadataWatcher.start();
 
-  const normalizeFolder = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const normalizeFolder = (p: string): string => p
+    .replace(/^\\\\\?\\/, '')
+    .replace(/\\/g, '/')
+    .replace(/\/+$/, '')
+    .toLowerCase();
 
   // A tab's sessionId is captured once, at spawn. But Claude rolls it forward mid-tab
   // (notably `/clear`, which starts a new conversation under a new id), and nothing
@@ -83,7 +89,9 @@ export function registerIpcHandlers(
   // so we use it to keep the owning tab in sync.
   const historyWatcher = new HistoryWatcher(async ({ project, sessionId }) => {
     const target = normalizeFolder(project);
-    const candidates = Array.from(tabs.values()).filter(t => normalizeFolder(t.launchFolder) === target);
+    const candidates = Array.from(tabs.values()).filter(
+      t => t.agent === 'claude' && normalizeFolder(t.launchFolder) === target,
+    );
     if (candidates.length === 0) return;
 
     // With multiple tabs on the same folder, the prompt that produced this entry came
@@ -105,8 +113,10 @@ export function registerIpcHandlers(
     metadataWatcher.unregisterTab(tab.sessionId);
     tab.sessionId = sessionId;
     tab.lastActivityAt = Date.now();
+    ptyManager.setSessionId(tab.id, sessionId);
     metadataWatcher.registerTab(tab.id, sessionId);
     saveTabState();
+    safeSend(IPC.TAB_SESSION, { tabId: tab.id, sessionId });
   });
   historyWatcher.start();
 
@@ -117,20 +127,133 @@ export function registerIpcHandlers(
     stateManager.save();
   }
 
+  const knownCodexSessions = new Set<string>();
+  const claimedCodexSessions = new Set<string>();
+  let codexInventoryReady = false;
+  let codexPollRunning = false;
+
+  function adoptCodexSession(tab: TabState, ref: CodexSessionRef): void {
+    if (tab.agent !== 'codex' || !tabs.has(tab.id)) return;
+    let dirty = false;
+    if (tab.sessionId !== ref.sessionId) {
+      claimedCodexSessions.delete(tab.sessionId);
+      tab.sessionId = ref.sessionId;
+      claimedCodexSessions.add(ref.sessionId);
+      tab.lastActivityAt = Date.now();
+      ptyManager.setSessionId(tab.id, ref.sessionId);
+      safeSend(IPC.TAB_SESSION, { tabId: tab.id, sessionId: ref.sessionId });
+      dirty = true;
+    }
+    if (ref.name && tab.label !== ref.name) {
+      tab.label = ref.name;
+      safeSend(IPC.TAB_METADATA, { tabId: tab.id, name: ref.name });
+      dirty = true;
+    }
+    const status = sessionTracker.getCodexSessionStatus(ref);
+    if (status && tab.status !== status && tab.status !== 'stopped') {
+      tab.status = status;
+      safeSend(IPC.TAB_STATUS, { tabId: tab.id, status });
+    }
+    if (dirty) saveTabState();
+  }
+
+  async function waitForNewCodexSession(
+    tabId: string,
+    folder: string,
+    previousIds: Set<string>,
+    provisionalId: string,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const currentTab = tabs.get(tabId);
+      if (!currentTab || currentTab.sessionId !== provisionalId) return;
+      const refs = await sessionTracker.getCodexSessionRefs();
+      const next = refs
+        .filter(ref => normalizeFolder(ref.project) === normalizeFolder(folder))
+        .filter(ref => !previousIds.has(ref.sessionId))
+        .filter(ref => !claimedCodexSessions.has(ref.sessionId))
+        .sort((a, b) => b.timestamp - a.timestamp)[0];
+      if (next) {
+        knownCodexSessions.add(next.sessionId);
+        const tab = tabs.get(tabId);
+        if (tab) adoptCodexSession(tab, next);
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+
+  async function pollCodexSessions(): Promise<void> {
+    if (codexPollRunning) return;
+    codexPollRunning = true;
+    try {
+      const refs = await sessionTracker.getCodexSessionRefs();
+      if (!codexInventoryReady) {
+        for (const ref of refs) knownCodexSessions.add(ref.sessionId);
+        codexInventoryReady = true;
+      } else {
+        for (const ref of refs) {
+          if (knownCodexSessions.has(ref.sessionId)) continue;
+          knownCodexSessions.add(ref.sessionId);
+          const target = normalizeFolder(ref.project);
+          const candidates = Array.from(tabs.values()).filter(
+            tab => tab.agent === 'codex' && normalizeFolder(tab.launchFolder) === target,
+          );
+          const tab = candidates.find(candidate => candidate.isActive)
+            ?? candidates.sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+          if (tab && !claimedCodexSessions.has(ref.sessionId)) adoptCodexSession(tab, ref);
+        }
+      }
+
+      const byId = new Map(refs.map(ref => [ref.sessionId, ref]));
+      for (const tab of tabs.values()) {
+        if (tab.agent !== 'codex') continue;
+        const ref = byId.get(tab.sessionId);
+        if (!ref) continue;
+        if (ref.name && ref.name !== tab.label) adoptCodexSession(tab, ref);
+        const status = sessionTracker.getCodexSessionStatus(ref);
+        if (status && tab.status !== status && tab.status !== 'stopped') {
+          tab.status = status;
+          safeSend(IPC.TAB_STATUS, { tabId: tab.id, status });
+        }
+      }
+    } catch {
+      // Codex may be migrating or replacing its state database; retry next poll.
+    } finally {
+      codexPollRunning = false;
+    }
+  }
+
+  if (availableAgents.codex) {
+    void pollCodexSessions();
+    const timer = setInterval(() => void pollCodexSessions(), 1_000);
+    timer.unref();
+  }
+
   ipcMain.handle(IPC.TAB_CREATE, async (_event, request: TabCreateRequest): Promise<TabState> => {
     const tabId = request.tabId;
+    const requestedAgent: AgentType = request.agent === 'codex' ? 'codex' : 'claude';
+    if (!availableAgents[requestedAgent]) {
+      throw new Error(`${requestedAgent === 'codex' ? 'Codex' : 'Claude Code'} CLI was not detected`);
+    }
+    const codexSessionsBefore = requestedAgent === 'codex' && !request.resumeSessionId
+      ? new Set(
+          (await sessionTracker.getCodexSessionRefs())
+            .filter(ref => normalizeFolder(ref.project) === normalizeFolder(request.folder))
+            .map(ref => ref.sessionId),
+        )
+      : null;
 
     // A background agent's session can't be resumed while its process is alive — the CLI
     // refuses and points you at `claude agents`. Every path that reopens a session (tab
     // restore, sidebar click, recently-closed) lands here, so resolve it once, here:
     // attach to a live agent, and resume anything else (including agents that have exited).
-    const agent = request.resumeSessionId
+    const backgroundAgent = requestedAgent === 'claude' && request.resumeSessionId
       ? await agentRegistry.getBackgroundAgent(request.resumeSessionId)
       : undefined;
 
-    const { sessionId } = ptyManager.spawn(tabId, request.folder, {
+    const { sessionId } = ptyManager.spawn(tabId, requestedAgent, request.folder, {
       resumeSessionId: request.resumeSessionId,
-      attachAgentId: agent?.agentId,
+      attachAgentId: backgroundAgent?.agentId,
       cols: request.cols,
       rows: request.rows,
     });
@@ -148,7 +271,7 @@ export function registerIpcHandlers(
       logStream.write(`[${new Date().toISOString()}] ${escaped}\n`);
 
       const currentTab = tabs.get(tabId);
-      if (currentTab && currentTab.status !== 'stopped') {
+      if (currentTab?.agent === 'claude' && currentTab.status !== 'stopped') {
         const newStatus = detectStatus(data, currentTab.status);
         if (newStatus) {
           currentTab.status = newStatus;
@@ -171,19 +294,26 @@ export function registerIpcHandlers(
       }
     });
 
-    // Seed the tab with any metadata Claude has already written for this session, so the
-    // renderer paints the correct label/colour on first render rather than waiting for the
-    // IPC metadata event (which would briefly flash the folder-basename default).
-    const known = metadataWatcher.getKnownMetadata(sessionId);
-    const initialLabel = known?.name?.trim() || path.basename(request.folder);
+    // Seed known names before first paint. Claude stores /rename and /color in its
+    // transcript; Codex keeps the thread title in its saved thread inventory.
+    const knownClaude = requestedAgent === 'claude'
+      ? metadataWatcher.getKnownMetadata(sessionId)
+      : undefined;
+    const knownCodex = requestedAgent === 'codex' && request.resumeSessionId
+      ? await sessionTracker.getCodexSessionRef(sessionId)
+      : undefined;
+    const initialLabel = knownClaude?.name?.trim()
+      || knownCodex?.name?.trim()
+      || path.basename(request.folder);
 
     const tab: TabState = {
       id: tabId,
+      agent: requestedAgent,
       launchFolder: request.folder,
       currentFolder: request.folder,
       sessionId,
       label: initialLabel,
-      ...(known?.color ? { color: known.color } : {}),
+      ...(knownClaude?.color ? { color: knownClaude.color } : {}),
       isActive: true,
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
@@ -196,14 +326,22 @@ export function registerIpcHandlers(
     }
 
     tabs.set(tabId, tab);
-    metadataWatcher.registerTab(tabId, sessionId);
+    if (requestedAgent === 'claude') metadataWatcher.registerTab(tabId, sessionId);
+    if (requestedAgent === 'codex') {
+      knownCodexSessions.add(sessionId);
+      claimedCodexSessions.add(sessionId);
+    }
     saveTabState();
-    return tab;
+    if (codexSessionsBefore) {
+      await waitForNewCodexSession(tabId, request.folder, codexSessionsBefore, sessionId);
+    }
+    return tabs.get(tabId) ?? tab;
   });
 
   ipcMain.handle(IPC.TAB_CLOSE, async (_event, { tabId }: { tabId: string }): Promise<void> => {
     const tab = tabs.get(tabId);
-    if (tab) metadataWatcher.unregisterTab(tab.sessionId);
+    if (tab?.agent === 'claude') metadataWatcher.unregisterTab(tab.sessionId);
+    if (tab?.agent === 'codex') claimedCodexSessions.delete(tab.sessionId);
     await ptyManager.gracefulKill(tabId);
     tabs.delete(tabId);
     saveTabState();
@@ -227,11 +365,13 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle(IPC.TAB_INPUT, async (_event, { tabId, data }: { tabId: string; data: string }): Promise<void> => {
-    ptyManager.write(tabId, data);
     const tab = tabs.get(tabId);
     if (tab) {
       tab.lastActivityAt = Date.now();
-      if (tab.status === 'resuming') {
+      // Enter submits the Codex composer. Publish running before forwarding it so the
+      // renderer hides the caret before Codex begins its first animated redraw.
+      const isCodexSubmit = tab.agent === 'codex' && tab.status === 'waiting' && data === '\r';
+      if (tab.status === 'resuming' || isCodexSubmit) {
         tab.status = 'running';
         safeSend(IPC.TAB_STATUS, { tabId, status: 'running' });
       } else if (tab.status === 'attention') {
@@ -246,6 +386,7 @@ export function registerIpcHandlers(
         }
       }
     }
+    ptyManager.write(tabId, data);
   });
 
   ipcMain.handle(IPC.TAB_GET_ALL, async (): Promise<TabState[]> => {
@@ -258,7 +399,7 @@ export function registerIpcHandlers(
 
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
-      title: 'Select project folder for Claude Code',
+      title: 'Select project folder',
     });
 
     if (result.canceled || result.filePaths.length === 0) {
@@ -267,12 +408,12 @@ export function registerIpcHandlers(
     return result.filePaths[0];
   });
 
-  ipcMain.handle(IPC.SESSION_LIST, async (_event, { folder }: { folder: string }) => {
-    return sessionTracker.getSessionsForFolder(folder);
+  ipcMain.handle(IPC.SESSION_LIST, async (_event, { folder, agent }: { folder: string; agent: AgentType }) => {
+    return sessionTracker.getSessionsForFolder(folder, agent === 'codex' ? 'codex' : 'claude');
   });
 
   ipcMain.handle(IPC.AGENT_GET_AVAILABLE, () => {
-    return detectAvailableAgents();
+    return availableAgents;
   });
 
   ipcMain.handle(IPC.STATE_GET, async () => {
@@ -373,8 +514,11 @@ export function registerIpcHandlers(
     stateManager.save();
     safeSend('preferences:changed', prefs);
 
-    if (prefs.newTabShortcut !== oldPrefs.newTabShortcut) {
-      // Re-register the New Tab accelerator with the new binding
+    if (
+      prefs.newTabShortcut !== oldPrefs.newTabShortcut
+      || prefs.defaultAgent !== oldPrefs.defaultAgent
+    ) {
+      // Re-register the shortcut and keep agent-specific native menu labels current.
       rebuildMenu?.();
     }
 
@@ -448,8 +592,8 @@ export function registerIpcHandlers(
         }
         const prefsColors = getThemeColors(resolveTheme(stateManager.getPreferences().theme));
         prefsWin = new BrowserWindow({
-          width: 480,
-          height: 540,
+          width: 560,
+          height: 720,
           resizable: false,
           minimizable: false,
           maximizable: false,

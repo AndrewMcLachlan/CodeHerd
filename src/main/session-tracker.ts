@@ -2,8 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 import { CLAUDE_HISTORY_FILE, CLAUDE_PROJECTS_DIR } from '../shared/constants';
-import type { ClaudeSession, FolderPath } from '../shared/types';
+import type { AgentSession, AgentType, FolderPath } from '../shared/types';
 import type { AgentRegistry } from './agent-registry';
+import { CodexSessionTracker, type CodexSessionRef, type CodexSessionStatus } from './codex-session-tracker';
 
 interface SessionAccumulator {
   /** Most recent prompt that isn't a slash command */
@@ -16,9 +17,28 @@ interface SessionAccumulator {
 }
 
 export class SessionTracker {
+  private codex = new CodexSessionTracker();
+
   constructor(private agents: AgentRegistry) {}
 
-  async getSessionsForFolder(folder: FolderPath): Promise<ClaudeSession[]> {
+  async getSessionsForFolder(folder: FolderPath, agent: AgentType): Promise<AgentSession[]> {
+    if (agent === 'codex') return this.codex.getSessionsForFolder(folder);
+    return this.getClaudeSessionsForFolder(folder);
+  }
+
+  getCodexSessionRefs(): Promise<CodexSessionRef[]> {
+    return this.codex.getAllSessionRefs();
+  }
+
+  getCodexSessionRef(sessionId: string): Promise<CodexSessionRef | undefined> {
+    return this.codex.getSessionRef(sessionId);
+  }
+
+  getCodexSessionStatus(ref: CodexSessionRef): CodexSessionStatus | null {
+    return this.codex.getSessionStatus(ref);
+  }
+
+  private async getClaudeSessionsForFolder(folder: FolderPath): Promise<AgentSession[]> {
     if (!fs.existsSync(CLAUDE_HISTORY_FILE)) {
       return [];
     }
@@ -68,7 +88,7 @@ export class SessionTracker {
     // History entries outlive Claude Code's transcript cleanup, so drop any
     // session whose transcript is gone or holds no conversation — those
     // can't be resumed (#70)
-    const sessions: ClaudeSession[] = [];
+    const sessions: AgentSession[] = [];
     for (const [sessionId, acc] of accumulators) {
       const transcript = path.join(
         CLAUDE_PROJECTS_DIR,
@@ -78,6 +98,7 @@ export class SessionTracker {
       if (!(await this.isResumable(transcript))) continue;
       const agent = live.get(sessionId);
       sessions.push({
+        agent: 'claude',
         sessionId,
         project: acc.rawProject,
         lastPrompt: acc.lastMeaningfulPrompt || acc.lastPrompt || '(no prompt)',

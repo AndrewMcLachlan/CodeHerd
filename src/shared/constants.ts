@@ -24,9 +24,13 @@ export const DEFAULT_SIDEBAR = {
 export const DEFAULT_PREFERENCES = {
   warnBeforeClosingTabs: true,
   fontFamily: '',
+  fontSize: 12,
+  terminalForeground: '',
+  terminalBackground: '',
   theme: 'dark' as const,
   tabSwitchMode: 'mru' as const,
   newTabShortcut: 'Ctrl+T' as const,
+  defaultAgent: 'claude' as const,
 };
 
 export const DEFAULT_APP_STATE = {

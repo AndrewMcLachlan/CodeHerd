@@ -30,6 +30,7 @@ export const IPC = {
   PTY_EXIT: 'pty:exit',
   TAB_STATUS: 'tab:status',
   TAB_METADATA: 'tab:metadata',
+  TAB_SESSION: 'tab:session',
   THEME_CHANGED: 'theme:changed',
   MENU_RESTORE_RECENT: 'menu:restore-recent',
   UPDATE_AVAILABLE: 'update:available',

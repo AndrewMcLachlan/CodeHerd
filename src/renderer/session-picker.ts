@@ -1,4 +1,4 @@
-import type { ClaudeSession } from '../shared/types';
+import type { AgentSession, AgentType } from '../shared/types';
 
 export interface SessionPickerResult {
   action: 'resume' | 'new' | 'cancel';
@@ -10,7 +10,7 @@ export class SessionPicker {
    * Shows a modal dialog to choose between resuming an existing session or starting a new one.
    * Returns the user's choice. Only call this when sessions.length > 0.
    */
-  show(sessions: ClaudeSession[], folderName: string): Promise<SessionPickerResult> {
+  show(sessions: AgentSession[], folderName: string, agent: AgentType): Promise<SessionPickerResult> {
     return new Promise((resolve) => {
       const backdrop = document.createElement('div');
       backdrop.className = 'session-picker-backdrop';
@@ -25,7 +25,7 @@ export class SessionPicker {
 
       const subtitle = document.createElement('p');
       subtitle.className = 'session-picker-subtitle';
-      subtitle.textContent = 'Resume a session or start fresh';
+      subtitle.textContent = `Resume a ${agent === 'codex' ? 'Codex' : 'Claude Code'} session or start fresh`;
       dialog.appendChild(subtitle);
 
       const list = document.createElement('div');
@@ -37,10 +37,13 @@ export class SessionPicker {
 
         const prompt = document.createElement('span');
         prompt.className = 'session-picker-prompt';
-        prompt.textContent = session.lastPrompt.length > 80
-          ? session.lastPrompt.slice(0, 80) + '\u2026'
+        const display = session.name || session.lastPrompt;
+        prompt.textContent = display.length > 80
+          ? display.slice(0, 80) + '\u2026'
+          : display;
+        prompt.title = session.name && session.name !== session.lastPrompt
+          ? `${session.name}\n${session.lastPrompt}`
           : session.lastPrompt;
-        prompt.title = session.lastPrompt;
 
         const time = document.createElement('span');
         time.className = 'session-picker-time';

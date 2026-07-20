@@ -1,4 +1,4 @@
-import type { ClaudeSession } from '../shared/types';
+import type { AgentSession, AgentType } from '../shared/types';
 
 const MIN_WIDTH = 150;
 const MAX_WIDTH = 500;
@@ -6,15 +6,18 @@ const MAX_WIDTH = 500;
 export class Sidebar {
   private element: HTMLElement;
   private sessionList: HTMLElement;
+  private header: HTMLElement;
   private resizeHandle: HTMLElement;
-  private onResumeSession: ((session: ClaudeSession) => void) | null = null;
+  private onResumeSession: ((session: AgentSession) => void) | null = null;
   private width: number;
   private collapsed: boolean;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private loadSequence = 0;
 
   constructor(initialWidth: number, initialCollapsed: boolean) {
     this.element = document.getElementById('sidebar')!;
     this.sessionList = document.getElementById('session-list')!;
+    this.header = document.getElementById('sidebar-header')!;
     this.resizeHandle = document.getElementById('sidebar-resize')!;
     this.width = initialWidth;
     this.collapsed = initialCollapsed;
@@ -31,7 +34,7 @@ export class Sidebar {
     this.initResize();
   }
 
-  setOnResumeSession(callback: (session: ClaudeSession) => void): void {
+  setOnResumeSession(callback: (session: AgentSession) => void): void {
     this.onResumeSession = callback;
   }
 
@@ -90,11 +93,15 @@ export class Sidebar {
   }
 
   clear(): void {
+    this.loadSequence++;
     this.sessionList.innerHTML = '';
   }
 
-  async loadSessionsForFolder(folder: string): Promise<void> {
-    const sessions = await window.codeherd.listSessions(folder);
+  async loadSessionsForFolder(folder: string, agent: AgentType): Promise<void> {
+    const sequence = ++this.loadSequence;
+    this.header.textContent = agent === 'codex' ? 'Codex Sessions' : 'Claude Sessions';
+    const sessions = await window.codeherd.listSessions(folder, agent);
+    if (sequence !== this.loadSequence) return;
     this.sessionList.innerHTML = '';
 
     if (sessions.length === 0) {
@@ -111,8 +118,11 @@ export class Sidebar {
 
       const prompt = document.createElement('span');
       prompt.className = 'session-prompt';
-      prompt.textContent = this.truncate(session.lastPrompt, 60);
-      prompt.title = session.lastPrompt;
+      const display = session.name || session.lastPrompt;
+      prompt.textContent = this.truncate(display, 60);
+      prompt.title = session.name && session.name !== session.lastPrompt
+        ? `${session.name}\n${session.lastPrompt}`
+        : session.lastPrompt;
 
       const time = document.createElement('span');
       time.className = 'session-time';
