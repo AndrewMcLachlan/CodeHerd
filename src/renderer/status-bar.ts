@@ -139,7 +139,7 @@ export class StatusBar {
     // Context fill, e.g. "ctx 22%" — colour ramps as it approaches the window limit.
     if (meta?.contextTokens && meta.contextLimit) {
       const pct = Math.round((meta.contextTokens / meta.contextLimit) * 100);
-      this.contextEl.textContent = `ctx ${pct}%`;
+      this.contextEl.textContent = `Context ${pct}% used`;
       this.contextEl.title = `Context: ${meta.contextTokens.toLocaleString()} / ${meta.contextLimit.toLocaleString()} tokens`;
       this.contextEl.classList.toggle('status-context-warn', pct >= 75 && pct < 90);
       this.contextEl.classList.toggle('status-context-danger', pct >= 90);
