@@ -12,8 +12,6 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.invoke(IPC.TAB_RESIZE, { tabId, cols, rows }),
   inputToTab: (tabId: string, data: string): Promise<void> =>
     ipcRenderer.invoke(IPC.TAB_INPUT, { tabId, data }),
-  setTabLabel: (tabId: string, label: string): Promise<void> =>
-    ipcRenderer.invoke(IPC.TAB_SET_LABEL, { tabId, label }),
   getAllTabs: (): Promise<TabState[]> =>
     ipcRenderer.invoke(IPC.TAB_GET_ALL),
   reorderTabs: (tabIds: string[]): Promise<void> =>

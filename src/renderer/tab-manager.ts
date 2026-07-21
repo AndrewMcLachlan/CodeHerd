@@ -1,5 +1,5 @@
 import type { AgentAvailability, AgentType, TabId, TabMetadataMessage, TabSessionMessage, TabState, TabSwitchMode } from '../shared/types';
-import { getCodexLabelFromTerminalTitle, getNewTabMenuOptions, resolveDefaultAgent, type NewTabMenuOption } from '../shared/agents';
+import { getNewTabMenuOptions, resolveDefaultAgent, type NewTabMenuOption } from '../shared/agents';
 import { TerminalManager } from './terminal-manager';
 import { SessionPicker } from './session-picker';
 import { createAgentIcon } from './agent-icon';
@@ -45,7 +45,6 @@ export class TabManager {
   private dragState: { tabId: TabId; el: HTMLElement; ghost: HTMLElement; startX: number } | null = null;
   private sessionPicker = new SessionPicker();
   private mruHistory: TabId[] = [];
-  private terminalTitles = new Map<TabId, string>();
   private tabSwitchMode: TabSwitchMode = 'mru';
   private availableAgents: AgentAvailability;
   private defaultAgent: AgentType;
@@ -120,8 +119,6 @@ export class TabManager {
     }
 
     this.tabs.set(tab.id, tab);
-    const terminalTitle = this.terminalTitles.get(tab.id);
-    if (terminalTitle) this.applyTerminalTitle(tab.id, terminalTitle);
     this.renderTab(tab);
     this.switchTo(tab.id);
     this.hideEmptyState();
@@ -178,7 +175,6 @@ export class TabManager {
     // Remove from UI immediately so it feels instant
     this.terminalManager.dispose(tabId);
     this.tabs.delete(tabId);
-    this.terminalTitles.delete(tabId);
     this.tabBar.querySelector(`[data-tab-id="${tabId}"]`)?.remove();
 
     // Remove from MRU history
@@ -238,20 +234,6 @@ export class TabManager {
   updateSession(msg: TabSessionMessage): void {
     const tab = this.tabs.get(msg.tabId);
     if (tab) tab.sessionId = msg.sessionId;
-  }
-
-  /** Apply Codex's live chat name from its OSC terminal title and persist it. */
-  applyTerminalTitle(tabId: TabId, title: string): void {
-    this.terminalTitles.set(tabId, title);
-    const tab = this.tabs.get(tabId);
-    if (!tab || tab.agent !== 'codex') return;
-
-    const label = getCodexLabelFromTerminalTitle(title);
-    if (!label || tab.label === label) return;
-    tab.label = label;
-    const labelEl = this.tabBar.querySelector(`[data-tab-id="${tabId}"] .tab-label`);
-    if (labelEl) labelEl.textContent = label;
-    void window.codeherd.setTabLabel(tabId, label);
   }
 
   private applyColorToElement(el: HTMLElement, color: string | undefined): void {

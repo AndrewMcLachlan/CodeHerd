@@ -40,25 +40,16 @@ export function getNewTabMenuOptions(
   }));
 }
 
-/**
- * Codex includes the current chat name in its OSC terminal title. Busy titles
- * prefix it with a braille spinner; attention titles put it after a pipe.
- */
-export function getCodexLabelFromTerminalTitle(title: string): string | null {
-  const afterStatus = title.includes(' | ')
-    ? title.slice(title.lastIndexOf(' | ') + 3)
-    : title;
-  const label = afterStatus.replace(/^[\u2800-\u28ff]\s*/, '').trim();
-  const isProcessTitle = /^[a-z]:[\\/].*\.exe\s*$/i.test(label)
-    || /^(?:windows powershell|command prompt)$/i.test(label)
-    || /^(?:npm|npx|node|pnpm|yarn)(?:\s|$)/i.test(label);
-  if (
-    !label
-    || /^\[.*\]\s*(?:action required)?$/i.test(label)
-    || label.toLowerCase() === 'codex'
-    || isProcessTitle
-  ) {
-    return null;
-  }
-  return label;
+/** Distinguish a user `/rename` from Codex's generated first-prompt title. */
+export function isCustomCodexSessionName(
+  title: string | null | undefined,
+  firstUserMessage: string | null | undefined,
+  preview: string | null | undefined,
+): boolean {
+  const name = title?.trim();
+  if (!name) return false;
+  const generatedNames = [firstUserMessage, preview]
+    .map(value => value?.trim())
+    .filter((value): value is string => !!value);
+  return !generatedNames.includes(name);
 }

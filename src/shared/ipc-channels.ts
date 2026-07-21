@@ -4,7 +4,6 @@ export const IPC = {
   TAB_CLOSE: 'tab:close',
   TAB_RESIZE: 'tab:resize',
   TAB_INPUT: 'tab:input',
-  TAB_SET_LABEL: 'tab:set-label',
   TAB_GET_ALL: 'tab:get-all',
   TAB_REORDER: 'tab:reorder',
   SESSION_LIST: 'session:list',

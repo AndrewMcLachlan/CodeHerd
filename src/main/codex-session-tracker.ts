@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as readline from 'readline';
 import { DatabaseSync } from 'node:sqlite';
+import { isCustomCodexSessionName } from '../shared/agents';
 import type { AgentSession, FolderPath, SessionId } from '../shared/types';
 import { getLoginShellEnv } from './claude-cli';
 
@@ -22,6 +23,8 @@ export interface CodexSessionRef {
   sessionId: SessionId;
   project: FolderPath;
   name?: string;
+  /** True when the SQLite title differs from Codex's generated first-prompt title. */
+  isCustomName?: boolean;
   lastPrompt: string;
   timestamp: number;
   /** Transcript backing this thread, used internally to observe turn lifecycle events. */
@@ -189,10 +192,14 @@ export class CodexSessionTracker {
           const rolloutPath = row.rollout_path
             ? (path.isAbsolute(row.rollout_path) ? row.rollout_path : path.join(this.codexHome, row.rollout_path))
             : undefined;
+          const name = row.title?.trim();
           return {
             sessionId: row.id,
             project: row.cwd.replace(/^\\\\\?\\/, ''),
-            ...(row.title?.trim() ? { name: row.title.trim() } : {}),
+            ...(name ? {
+              name,
+              isCustomName: isCustomCodexSessionName(name, row.first_user_message, row.preview),
+            } : {}),
             lastPrompt: row.first_user_message?.trim() || row.preview?.trim() || '',
             timestamp: Number(row.updated_at_ms || row.created_at_ms || 0),
             ...(rolloutPath ? { rolloutPath } : {}),

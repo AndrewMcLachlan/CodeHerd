@@ -23,7 +23,6 @@ declare global {
       closeTab: (tabId: string) => Promise<void>;
       resizeTab: (tabId: string, cols: number, rows: number) => Promise<void>;
       inputToTab: (tabId: string, data: string) => Promise<void>;
-      setTabLabel: (tabId: string, label: string) => Promise<void>;
       reorderTabs: (tabIds: string[]) => Promise<void>;
       getAllTabs: () => Promise<TabState[]>;
       listSessions: (folder: string, agent: AgentType) => Promise<AgentSession[]>;
@@ -269,10 +268,9 @@ async function init(): Promise<void> {
     return items;
   });
 
-  // Terminal titles feed the status bar and Codex's live `/rename` label.
+  // When terminal title changes, update status bar
   terminalManager.setOnTitleChange((tabId, title) => {
     statusBar.setTerminalTitle(tabId, title);
-    tabManager.applyTerminalTitle(tabId, title);
     const active = tabManager.getActiveTab();
     if (active && active.id === tabId) {
       statusBar.update(active.launchFolder, active.id, toStatusMeta(active));
