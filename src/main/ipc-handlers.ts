@@ -12,7 +12,7 @@ import { HistoryWatcher } from './history-watcher';
 import { AgentRegistry } from './agent-registry';
 import { detectAvailableAgents } from './agent-detection';
 import { getGitInfo } from './git-info';
-import { detectStatus } from './status-detection';
+import { detectCodexAttention, detectStatus } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
 
 function resolveTheme(pref: ThemePreference): ResolvedTheme {
@@ -178,7 +178,10 @@ export function registerIpcHandlers(
       metadata.contextLimit = runtime.contextLimit;
     }
     if (Object.keys(metadata).length > 1) safeSend(IPC.TAB_METADATA, metadata);
-    if (runtime.status && tab.status !== runtime.status && tab.status !== 'stopped') {
+    // The rollout remains "running" while Codex is paused at an approval prompt.
+    // Keep the terminal-derived attention state latched until the user answers it.
+    const isPendingCodexApproval = tab.status === 'attention' && runtime.status === 'running';
+    if (runtime.status && tab.status !== runtime.status && tab.status !== 'stopped' && !isPendingCodexApproval) {
       tab.status = runtime.status;
       safeSend(IPC.TAB_STATUS, { tabId: tab.id, status: runtime.status });
     }
@@ -310,6 +313,10 @@ export function registerIpcHandlers(
           currentTab.status = newStatus;
           safeSend(IPC.TAB_STATUS, { tabId, status: newStatus });
         }
+      } else if (currentTab?.agent === 'codex' && currentTab.status !== 'stopped'
+        && currentTab.status !== 'attention' && detectCodexAttention(data)) {
+        currentTab.status = 'attention';
+        safeSend(IPC.TAB_STATUS, { tabId, status: 'attention' });
       }
 
       safeSend(IPC.PTY_DATA, { tabId, data });
@@ -427,8 +434,11 @@ export function registerIpcHandlers(
         // so it must clear the attention status (#56)
         const isNavKey = /^\x1b[\[O]./.test(data);
         if (!isNavKey) {
-          tab.status = 'waiting';
-          safeSend(IPC.TAB_STATUS, { tabId, status: 'waiting' });
+          // Answering a Codex approval resumes the same turn; its rollout status is
+          // still running. Claude returns to its composer while processing the input.
+          const nextStatus = tab.agent === 'codex' ? 'running' : 'waiting';
+          tab.status = nextStatus;
+          safeSend(IPC.TAB_STATUS, { tabId, status: nextStatus });
         }
       }
     }

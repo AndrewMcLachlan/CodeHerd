@@ -485,7 +485,7 @@ body {
 }
 
 .session-prompt {
-  font-size: 16px;
+  font-size: 14px;
   color: var(--text-secondary);
   display: block;
   white-space: nowrap;
@@ -494,7 +494,7 @@ body {
 }
 
 .session-time {
-  font-size: 14px;
+  font-size: 12px;
   color: var(--text-muted);
   display: block;
   margin-top: 2px;
@@ -751,7 +751,7 @@ body {
   background: var(--bg-surface);
   border-top: 1px solid var(--border);
   padding: 0 12px;
-  font-size: 15px;
+  font-size: 12px;
   user-select: none;
   flex-shrink: 0;
 }
