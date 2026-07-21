@@ -152,11 +152,8 @@ export function registerIpcHandlers(
       safeSend(IPC.TAB_SESSION, { tabId: tab.id, sessionId: ref.sessionId });
       durable = true;
     }
-    if (ref.name && tab.label !== ref.name) {
-      tab.label = ref.name;
-      metadata.name = ref.name;
-      durable = true;
-    }
+    // The inventory title can lag behind `/rename` and must only seed a resumed tab.
+    // The renderer persists Codex's live OSC title through TAB_SET_LABEL instead.
     const runtime = sessionTracker.getCodexSessionRuntime(ref);
     if (runtime.model && tab.model !== runtime.model) {
       tab.model = runtime.model;
@@ -338,7 +335,8 @@ export function registerIpcHandlers(
     const knownCodexRuntime = knownCodex
       ? sessionTracker.getCodexSessionRuntime(knownCodex)
       : undefined;
-    const initialLabel = knownClaude?.name?.trim()
+    const initialLabel = request.label?.trim()
+      || knownClaude?.name?.trim()
       || knownCodex?.name?.trim()
       || path.basename(request.folder);
 
@@ -434,6 +432,14 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.TAB_GET_ALL, async (): Promise<TabState[]> => {
     return Array.from(tabs.values());
+  });
+
+  ipcMain.handle(IPC.TAB_SET_LABEL, async (_event, { tabId, label }: { tabId: string; label: string }): Promise<void> => {
+    const tab = tabs.get(tabId);
+    const next = typeof label === 'string' ? label.trim() : '';
+    if (!tab || tab.agent !== 'codex' || !next || tab.label === next) return;
+    tab.label = next;
+    saveTabState();
   });
 
   ipcMain.handle(IPC.FOLDER_PICK, async (): Promise<string | null> => {

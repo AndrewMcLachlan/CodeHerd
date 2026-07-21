@@ -19,10 +19,11 @@ const toStatusMeta = (t: TabState): StatusMeta => ({
 declare global {
   interface Window {
     codeherd: {
-      createTab: (request: { tabId: string; agent: AgentType; folder: string; resumeSessionId?: string; cols?: number; rows?: number }) => Promise<TabState>;
+      createTab: (request: { tabId: string; agent: AgentType; folder: string; resumeSessionId?: string; label?: string; cols?: number; rows?: number }) => Promise<TabState>;
       closeTab: (tabId: string) => Promise<void>;
       resizeTab: (tabId: string, cols: number, rows: number) => Promise<void>;
       inputToTab: (tabId: string, data: string) => Promise<void>;
+      setTabLabel: (tabId: string, label: string) => Promise<void>;
       reorderTabs: (tabIds: string[]) => Promise<void>;
       getAllTabs: () => Promise<TabState[]>;
       listSessions: (folder: string, agent: AgentType) => Promise<AgentSession[]>;
@@ -268,9 +269,10 @@ async function init(): Promise<void> {
     return items;
   });
 
-  // When terminal title changes, update status bar
+  // Terminal titles feed the status bar and Codex's live `/rename` label.
   terminalManager.setOnTitleChange((tabId, title) => {
     statusBar.setTerminalTitle(tabId, title);
+    tabManager.applyTerminalTitle(tabId, title);
     const active = tabManager.getActiveTab();
     if (active && active.id === tabId) {
       statusBar.update(active.launchFolder, active.id, toStatusMeta(active));
@@ -443,7 +445,7 @@ async function init(): Promise<void> {
   if (tabsToRestore.length > 0) {
     for (const savedTab of tabsToRestore) {
       try {
-        await tabManager.createTab(savedTab.launchFolder, savedTab.agent, savedTab.sessionId);
+        await tabManager.createTab(savedTab.launchFolder, savedTab.agent, savedTab.sessionId, savedTab.label);
       } catch (err) {
         console.error('Failed to restore tab:', savedTab.label, err);
       }

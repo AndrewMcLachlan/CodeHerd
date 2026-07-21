@@ -116,6 +116,8 @@ export interface TabCreateRequest {
   agent: AgentType;
   folder: FolderPath;
   resumeSessionId?: SessionId;
+  /** Saved CodeHerd label to preserve while restoring an open tab. */
+  label?: string;
   cols?: number;
   rows?: number;
 }
