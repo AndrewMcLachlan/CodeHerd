@@ -9,6 +9,7 @@ export type AgentAvailability = Record<AgentType, boolean>;
 
 export interface TabState {
   id: TabId;
+  agent: AgentType;
   launchFolder: FolderPath;
   currentFolder: FolderPath;
   sessionId: SessionId;
@@ -21,15 +22,16 @@ export interface TabState {
   status: 'running' | 'stopped' | 'resuming' | 'waiting' | 'attention';
   /** Raw id of the model last seen in this session's transcript (e.g. "claude-opus-4-8"). */
   model?: string;
-  /** Context tokens in the most recent assistant turn (input + cache read + cache creation). */
+  /** Tokens occupying the context window after the most recent agent turn. */
   contextTokens?: number;
-  /** Context-window size the fill is measured against (200000, or 1000000 once a turn exceeds 200k). */
+  /** Effective context-window size reported or derived for the active model. */
   contextLimit?: number;
   /** Reasoning effort of the most recent assistant turn (e.g. "high"). */
   effort?: string;
 }
 
 export interface RecentlyClosedTab {
+  agent: AgentType;
   folder: FolderPath;
   sessionId: SessionId;
   label: string;
@@ -53,9 +55,16 @@ export type NewTabShortcut = string;
 export interface Preferences {
   warnBeforeClosingTabs: boolean;
   fontFamily: string;
+  /** Terminal font size in typographic points. */
+  fontSize: number;
+  /** Empty uses the active theme's terminal foreground. */
+  terminalForeground: string;
+  /** Empty uses the active theme's terminal background. */
+  terminalBackground: string;
   theme: ThemePreference;
   tabSwitchMode: TabSwitchMode;
   newTabShortcut: NewTabShortcut;
+  defaultAgent: AgentType;
 }
 
 export interface AppState {
@@ -87,7 +96,8 @@ export interface UpdateInfo {
   url: string;
 }
 
-export interface ClaudeSession {
+export interface AgentSession {
+  agent: AgentType;
   sessionId: SessionId;
   /**
    * Set only when this session is a *live* background agent, and holds the job id that
@@ -97,12 +107,17 @@ export interface ClaudeSession {
   project: FolderPath;
   lastPrompt: string;
   timestamp: number;
+  /** User-assigned or agent-generated session name, when available. */
+  name?: string;
 }
 
 export interface TabCreateRequest {
   tabId: TabId;
+  agent: AgentType;
   folder: FolderPath;
   resumeSessionId?: SessionId;
+  /** Saved CodeHerd label to preserve while restoring an open tab. */
+  label?: string;
   cols?: number;
   rows?: number;
 }
@@ -118,21 +133,27 @@ export interface PtyResizeMessage {
   rows: number;
 }
 
-/** Pushed from main → renderer when Claude Code updates a session's name or color. */
+/** Pushed from main → renderer when an agent updates a session name or tab color. */
 export interface TabMetadataMessage {
   tabId: TabId;
-  /** Present when Claude has set or cleared a name. `null` means cleared. */
+  /** Present when the agent has set or cleared a name. `null` means cleared. */
   name?: string | null;
-  /** Present when Claude has set or cleared a color. `null` means cleared. */
+  /** Claude-only: present when /color sets or clears a color. `null` means cleared. */
   color?: string | null;
   /** Present when the session's active model changes. Raw model id; the renderer formats it for display. */
   model?: string;
-  /** Present when the context fill changes. Token count of the most recent assistant turn. */
+  /** Present when the context fill changes. */
   contextTokens?: number;
-  /** Present alongside contextTokens: the window size it's measured against (200000 or 1000000). */
+  /** Present alongside contextTokens: the effective window size it is measured against. */
   contextLimit?: number;
   /** Present when the reasoning effort of the most recent assistant turn changes (e.g. "high"). */
   effort?: string;
+}
+
+/** Pushed when an agent assigns or switches the session backing a running tab. */
+export interface TabSessionMessage {
+  tabId: TabId;
+  sessionId: SessionId;
 }
 
 export interface GitInfo {

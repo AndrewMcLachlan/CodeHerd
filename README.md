@@ -1,14 +1,15 @@
 # CodeHerd
 
-A desktop app for managing multiple Claude Code CLI instances. Think VS Code meets Windows Terminal, but purpose-built for Claude Code.
+A desktop app for managing multiple Claude Code and OpenAI Codex CLI instances. Think VS Code meets Windows Terminal, but purpose-built for coding agents.
 
 ## Features
 
-- **Tabbed interface** - Run multiple Claude Code sessions side by side
+- **Tabbed interface** - Run Claude Code and Codex sessions side by side
+- **Agent-aware new tabs** - Choose any detected CLI agent and configure your preferred default
 - **Session persistence** - Tabs auto-resume when you restart the app
-- **Session sidebar** - Browse and resume past sessions per project folder
-- **Status bar** - Shows current folder, git branch, dirty state, and Claude's status
-- **Graceful shutdown** - Cleanly exits Claude processes to prevent config corruption
+- **Session sidebar** - Browse and resume each agent's past sessions per project folder
+- **Status bar** - Shows current folder, git branch, dirty state, and terminal status
+- **Graceful shutdown** - Cleanly exits agent processes before falling back to a process-tree kill
 
 ## Tech Stack
 
@@ -28,7 +29,7 @@ npm start
 
 | Shortcut | Action |
 |----------|--------|
-| Ctrl/Cmd+T | New tab (configurable in Preferences — remap or disable it to send Ctrl+T to Claude Code instead) |
+| Ctrl/Cmd+T | New tab (configurable in Preferences — remap or disable it to pass Ctrl+T to the active agent) |
 | Ctrl/Cmd+W | Close tab |
 | Ctrl/Cmd+B | Toggle sidebar |
 | F11 | Toggle fullscreen |

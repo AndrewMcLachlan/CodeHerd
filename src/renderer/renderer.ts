@@ -1,6 +1,6 @@
-import type { PtyDataMessage, TabState, ClaudeSession, AppState, GitInfo, Preferences, NewTabShortcut, TabMetadataMessage, UpdateInfo, AgentAvailability } from '../shared/types';
+import type { AgentAvailability, AgentSession, AgentType, PtyDataMessage, TabState, AppState, GitInfo, Preferences, NewTabShortcut, RecentlyClosedTab, TabMetadataMessage, TabSessionMessage, UpdateInfo } from '../shared/types';
 import { DEFAULT_NEW_TAB_SHORTCUT, formatShortcut, matchesShortcut } from '../shared/shortcut';
-import { TerminalManager } from './terminal-manager';
+import { DEFAULT_TERMINAL_FONT_SIZE_POINTS, TerminalManager } from './terminal-manager';
 import { TabManager } from './tab-manager';
 import { Sidebar } from './sidebar';
 import { StatusBar, type StatusMeta } from './status-bar';
@@ -19,13 +19,13 @@ const toStatusMeta = (t: TabState): StatusMeta => ({
 declare global {
   interface Window {
     codeherd: {
-      createTab: (request: { tabId: string; folder: string; resumeSessionId?: string; cols?: number; rows?: number }) => Promise<TabState>;
+      createTab: (request: { tabId: string; agent: AgentType; folder: string; resumeSessionId?: string; label?: string; cols?: number; rows?: number }) => Promise<TabState>;
       closeTab: (tabId: string) => Promise<void>;
       resizeTab: (tabId: string, cols: number, rows: number) => Promise<void>;
       inputToTab: (tabId: string, data: string) => Promise<void>;
       reorderTabs: (tabIds: string[]) => Promise<void>;
       getAllTabs: () => Promise<TabState[]>;
-      listSessions: (folder: string) => Promise<ClaudeSession[]>;
+      listSessions: (folder: string, agent: AgentType) => Promise<AgentSession[]>;
       getAvailableAgents: () => Promise<AgentAvailability>;
       pickFolder: () => Promise<string | null>;
       getState: () => Promise<AppState>;
@@ -34,7 +34,7 @@ declare global {
       clipboardHasImage: () => Promise<boolean>;
       getGitInfo: (folder: string) => Promise<GitInfo>;
       saveSidebarState: (sidebar: { width: number; collapsed: boolean }) => Promise<void>;
-      saveRecentlyClosed: (items: { folder: string; sessionId: string; label: string; closedAt: number }[]) => Promise<void>;
+      saveRecentlyClosed: (items: RecentlyClosedTab[]) => Promise<void>;
       menuAction: (action: string) => Promise<void>;
       openExternal: (url: string) => Promise<void>;
       dismissUpdate: (version: string) => Promise<void>;
@@ -43,10 +43,11 @@ declare global {
       onPtyExit: (cb: (msg: { tabId: string; exitCode: number }) => void) => () => void;
       onTabStatus: (cb: (msg: { tabId: string; status: string }) => void) => () => void;
       onTabMetadata: (cb: (msg: TabMetadataMessage) => void) => () => void;
-      onMenuOpenFolder: (cb: () => void) => () => void;
+      onTabSession: (cb: (msg: TabSessionMessage) => void) => () => void;
+      onMenuOpenFolder: (cb: (agent?: AgentType) => void) => () => void;
       onMenuCloseTab: (cb: () => void) => () => void;
       onMenuToggleSidebar: (cb: () => void) => () => void;
-      onMenuRestoreRecent: (cb: (msg: { folder: string; sessionId: string; index: number }) => void) => () => void;
+      onMenuRestoreRecent: (cb: (msg: { agent: AgentType; folder: string; sessionId: string; index: number }) => void) => () => void;
       onMenuPreferences: (cb: () => void) => () => void;
       onPreferencesChanged: (cb: (prefs: Preferences) => void) => () => void;
       onThemeChanged: (cb: (resolvedTheme: string) => void) => () => void;
@@ -121,8 +122,8 @@ function showNoAgentsWarning(): void {
   getNotificationStack().appendChild(banner);
 }
 
-function formatRecentDetail(folder: string, closedAt?: number): string {
-  const parts: string[] = [];
+function formatRecentDetail(agent: AgentType, folder: string, closedAt?: number): string {
+  const parts: string[] = [agent === 'codex' ? 'Codex' : 'Claude'];
   if (closedAt) {
     const diff = Date.now() - closedAt;
     if (diff < 60_000) parts.push('just now');
@@ -140,12 +141,25 @@ function formatRecentDetail(folder: string, closedAt?: number): string {
 }
 
 async function init(): Promise<void> {
-  // Load persisted state for sidebar
-  const state = await window.codeherd.getState();
+  const [state, availableAgents] = await Promise.all([
+    window.codeherd.getState(),
+    window.codeherd.getAvailableAgents(),
+  ]);
   const sidebarState = state.sidebar || { width: 260, collapsed: true };
+  const prefs = state.preferences ?? {
+    warnBeforeClosingTabs: true,
+    fontFamily: '',
+    fontSize: DEFAULT_TERMINAL_FONT_SIZE_POINTS,
+    terminalForeground: '',
+    terminalBackground: '',
+    theme: 'dark' as const,
+    tabSwitchMode: 'mru' as const,
+    newTabShortcut: 'Ctrl+T' as const,
+    defaultAgent: 'claude' as const,
+  };
 
   const terminalManager = new TerminalManager();
-  const tabManager = new TabManager(terminalManager);
+  const tabManager = new TabManager(terminalManager, availableAgents, prefs.defaultAgent ?? 'claude');
   const sidebar = new Sidebar(sidebarState.width, sidebarState.collapsed);
   const statusBar = new StatusBar();
 
@@ -159,23 +173,27 @@ async function init(): Promise<void> {
   // Configurable New Tab shortcut (#69). 'none' leaves Ctrl+T for Claude Code.
   let newTabShortcut: NewTabShortcut = DEFAULT_NEW_TAB_SHORTCUT;
   const newTabShortcutLabel = (): string | undefined => formatShortcut(newTabShortcut, isMac);
+  const updateNewTabButtonTitle = () => {
+    const label = newTabShortcutLabel();
+    const action = tabManager.getNewTabMenuOptions()[0].label;
+    document.getElementById('new-tab-btn')!.title = label ? `${action} (${label})` : action;
+  };
   const applyNewTabShortcut = (shortcut: NewTabShortcut | undefined) => {
     newTabShortcut = shortcut ?? DEFAULT_NEW_TAB_SHORTCUT;
     terminalManager.setNewTabShortcut(newTabShortcut);
-    const label = newTabShortcutLabel();
-    document.getElementById('new-tab-btn')!.title = label ? `New Tab (${label})` : 'New Tab';
+    updateNewTabButtonTitle();
   };
   const matchesNewTabShortcut = (e: KeyboardEvent): boolean => matchesShortcut(newTabShortcut, e);
 
   // Track recently closed tabs (loaded from persisted state)
-  const recentlyClosed: { folder: string; sessionId: string; label: string; closedAt: number }[] =
-    [...(state.recentlyClosed || [])];
+  const recentlyClosed: RecentlyClosedTab[] = [...(state.recentlyClosed || [])];
   const MAX_RECENT = 10;
 
   const saveRecent = () => window.codeherd.saveRecentlyClosed(recentlyClosed);
 
   tabManager.setOnTabClose((tab) => {
     recentlyClosed.unshift({
+      agent: tab.agent,
       folder: tab.launchFolder,
       sessionId: tab.sessionId,
       label: tab.label,
@@ -198,23 +216,28 @@ async function init(): Promise<void> {
   });
 
   new AppMenu(() => {
-    const items: MenuItem[] = [
-      { label: 'New Tab', shortcut: newTabShortcutLabel(), action: () => tabManager.openNewTab() },
+    const items: MenuItem[] = tabManager.getNewTabMenuOptions().map((option, index) => ({
+      label: option.label,
+      shortcut: index === 0 ? newTabShortcutLabel() : undefined,
+      disabled: !option.agent,
+      action: () => option.agent && tabManager.openNewTab(option.agent),
+    }));
+    items.push(
       { label: 'Close Tab', shortcut: `${mod}W`, action: () => {
         const active = tabManager.getActiveTab();
         if (active) tabManager.closeTab(active.id);
       }},
       { separator: true },
-    ];
+    );
 
     items.push({
       label: 'Recently Closed',
       disabled: recentlyClosed.length === 0,
       submenu: recentlyClosed.length > 0
         ? recentlyClosed.map(recent => ({
-            label: formatRecentDetail(recent.folder, recent.closedAt),
+            label: formatRecentDetail(recent.agent, recent.folder, recent.closedAt),
             action: () => {
-              tabManager.createTab(recent.folder, recent.sessionId);
+              tabManager.createTab(recent.folder, recent.agent, recent.sessionId);
               const idx = recentlyClosed.indexOf(recent);
               if (idx >= 0) recentlyClosed.splice(idx, 1);
               saveRecent();
@@ -256,12 +279,12 @@ async function init(): Promise<void> {
 
   // When a session is clicked in the sidebar, open it in a new tab
   sidebar.setOnResumeSession(async (session) => {
-    await tabManager.createTab(session.project, session.sessionId);
+    await tabManager.createTab(session.project, session.agent, session.sessionId);
   });
 
   // When switching tabs, update sidebar and status bar
   tabManager.setOnTabSwitch((tab) => {
-    sidebar.loadSessionsForFolder(tab.launchFolder);
+    sidebar.loadSessionsForFolder(tab.launchFolder, tab.agent);
     statusBar.update(tab.launchFolder, tab.id, toStatusMeta(tab));
   });
 
@@ -283,17 +306,15 @@ async function init(): Promise<void> {
     if (tab) statusBar.setMeta(tab.id, toStatusMeta(tab));
   });
 
+  window.codeherd.onTabSession((msg) => {
+    tabManager.updateSession(msg);
+  });
+
   window.codeherd.onUpdateAvailable((info) => {
     showUpdateBanner(info);
   });
 
-  // Detect both supported CLIs up front. Issue #58 can reuse this same result when it
-  // adds the agent chooser; for now, only the no-agent case needs UI treatment.
-  window.codeherd.getAvailableAgents()
-    .then((agents) => {
-      if (!agents.claude && !agents.codex) showNoAgentsWarning();
-    })
-    .catch((err) => console.warn('Failed to detect CLI agents:', err));
+  if (!availableAgents.claude && !availableAgents.codex) showNoAgentsWarning();
 
   // New tab button
   document.getElementById('new-tab-btn')!.addEventListener('click', () => {
@@ -306,8 +327,8 @@ async function init(): Promise<void> {
   });
 
   // Menu events from main process
-  window.codeherd.onMenuOpenFolder(() => {
-    tabManager.openNewTab();
+  window.codeherd.onMenuOpenFolder((agent) => {
+    tabManager.openNewTab(agent);
   });
 
   window.codeherd.onMenuCloseTab(() => {
@@ -322,7 +343,7 @@ async function init(): Promise<void> {
   });
 
   window.codeherd.onMenuRestoreRecent((msg) => {
-    tabManager.createTab(msg.folder, msg.sessionId);
+    tabManager.createTab(msg.folder, msg.agent, msg.sessionId);
     recentlyClosed.splice(msg.index, 1);
     saveRecent();
   });
@@ -332,12 +353,14 @@ async function init(): Promise<void> {
   });
 
   // Apply preferences
-  const prefs = state.preferences ?? { warnBeforeClosingTabs: true, fontFamily: '', theme: 'dark' as const, tabSwitchMode: 'mru' as const, newTabShortcut: 'Ctrl+T' as const };
   if (prefs.fontFamily) {
     terminalManager.setFontFamily(prefs.fontFamily);
   }
+  terminalManager.setFontSize(prefs.fontSize);
+  terminalManager.setColors(prefs.terminalForeground, prefs.terminalBackground);
   tabManager.setWarnBeforeClose(prefs.warnBeforeClosingTabs);
   tabManager.setTabSwitchMode(prefs.tabSwitchMode ?? 'mru');
+  tabManager.setDefaultAgent(prefs.defaultAgent ?? 'claude');
   applyNewTabShortcut(prefs.newTabShortcut);
 
   // Apply initial theme
@@ -347,8 +370,11 @@ async function init(): Promise<void> {
 
   window.codeherd.onPreferencesChanged((newPrefs) => {
     terminalManager.setFontFamily(newPrefs.fontFamily);
+    terminalManager.setFontSize(newPrefs.fontSize);
+    terminalManager.setColors(newPrefs.terminalForeground, newPrefs.terminalBackground);
     tabManager.setWarnBeforeClose(newPrefs.warnBeforeClosingTabs);
     tabManager.setTabSwitchMode(newPrefs.tabSwitchMode ?? 'mru');
+    tabManager.setDefaultAgent(newPrefs.defaultAgent ?? 'claude');
     applyNewTabShortcut(newPrefs.newTabShortcut);
   });
 
@@ -417,7 +443,7 @@ async function init(): Promise<void> {
   if (tabsToRestore.length > 0) {
     for (const savedTab of tabsToRestore) {
       try {
-        await tabManager.createTab(savedTab.launchFolder, savedTab.sessionId);
+        await tabManager.createTab(savedTab.launchFolder, savedTab.agent, savedTab.sessionId, savedTab.label);
       } catch (err) {
         console.error('Failed to restore tab:', savedTab.label, err);
       }
@@ -427,7 +453,9 @@ async function init(): Promise<void> {
       const activeOriginal = state.tabs.find(t => t.id === state.activeTabId);
       if (activeOriginal) {
         const match = tabManager.getAllTabs().find(
-          t => t.launchFolder === activeOriginal.launchFolder && t.sessionId === activeOriginal.sessionId
+          t => t.agent === activeOriginal.agent
+            && t.launchFolder === activeOriginal.launchFolder
+            && t.sessionId === activeOriginal.sessionId
         );
         if (match) {
           tabManager.switchTo(match.id);

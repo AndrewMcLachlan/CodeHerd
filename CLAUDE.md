@@ -1,4 +1,4 @@
-# CodeHerd - Claude Code Session Manager
+# CodeHerd - CLI Agent Session Manager
 
 ## Tech Stack
 - Electron 35+ with TypeScript (strict mode)
@@ -21,6 +21,8 @@
 - Use uuid v4 for all identifiers
 - Use --session-id flag when spawning new Claude sessions
 - Use --resume flag when restoring sessions
+- Launch new Codex sessions with `codex` and restore them with `codex resume <session-id>`
+- Persist the selected agent on tabs and recently closed entries
 
 ## Build
 - `npm run build` - compile TypeScript via esbuild

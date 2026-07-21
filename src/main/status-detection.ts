@@ -20,6 +20,15 @@ export function extractOscTitle(data: string): string | null {
 }
 
 /**
+ * Detects the title Codex displays while waiting for a tool approval.
+ * The punctuation alternates as part of Codex's attention animation.
+ */
+export function detectCodexAttention(data: string): boolean {
+  const title = extractOscTitle(data);
+  return title !== null && /^\[\s*[!.]\s*\]\s+Action Required(?:\s+\||$)/.test(title);
+}
+
+/**
  * Detects whether the OSC title indicates Claude Code is busy (spinner).
  * Braille characters (U+2800–U+28FF) are used as spinner frames.
  */

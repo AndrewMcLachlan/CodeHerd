@@ -126,7 +126,7 @@ body {
   flex-wrap: wrap;
   padding: 5px 24px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-primary);
 }
 
@@ -154,7 +154,7 @@ body {
 
 .app-menu-detail {
   width: 100%;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -178,7 +178,7 @@ body {
 
 .app-menu-shortcut {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
   margin-left: 32px;
 }
 
@@ -295,7 +295,7 @@ body {
 
 .tab-label {
   flex: 1;
-  font-size: 13px;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -310,6 +310,33 @@ body {
 
 .tab.active .tab-label {
   color: var(--text-primary);
+}
+
+.agent-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  opacity: 0.72;
+}
+
+.agent-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.agent-icon.agent-claude {
+  color: var(--orange);
+}
+
+.tab.active .agent-icon {
+  opacity: 0.92;
 }
 
 .tab-close {
@@ -416,7 +443,7 @@ body {
 }
 
 #sidebar-header {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -446,7 +473,7 @@ body {
 }
 
 .session-item {
-  padding: 8px 12px;
+  padding: 10px 12px;
   cursor: pointer;
   border-left: 2px solid transparent;
   transition: background 0.15s;
@@ -458,7 +485,7 @@ body {
 }
 
 .session-prompt {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-secondary);
   display: block;
   white-space: nowrap;
@@ -467,7 +494,7 @@ body {
 }
 
 .session-time {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-muted);
   display: block;
   margin-top: 2px;
@@ -479,7 +506,7 @@ body {
   border: 1px solid var(--accent);
   border-radius: 3px;
   color: var(--accent);
-  font-size: 9px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -540,7 +567,7 @@ body {
 /* Sidebar empty / exited tab */
 .session-empty {
   padding: 12px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-muted);
   font-style: italic;
 }
@@ -550,23 +577,32 @@ body {
   font-style: italic;
 }
 
-/* Fixed-width indicator space on all tabs to prevent layout shift */
+/* Activity replaces the agent mark in the same slot, keeping text aligned. */
 .tab .tab-label::before {
-  content: '';
-  display: inline-block;
-  width: 13px;
-  vertical-align: middle;
-  position: relative;
-  top: -1px;
+  content: none;
+  display: none;
+}
+
+.tab.running .agent-icon,
+.tab.attention .agent-icon {
+  visibility: hidden;
 }
 
 /* Running: animated braille spinner (matches Claude Code's ⠂ ⠐ pattern) */
 .tab.running .tab-label::before {
   content: '⠂';
+  display: block;
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 15px;
+  height: 15px;
+  transform: translateY(-50%);
+  text-align: center;
+  line-height: 15px;
   font-size: 13px;
   font-weight: bold;
   color: var(--orange);
-  margin-right: 2px;
   animation: braille-spin 1s steps(1) infinite;
 }
 
@@ -580,23 +616,18 @@ body {
   }
 }
 
-/* Waiting: orange sun */
-.tab.waiting .tab-label::before {
-  content: '✳';
-  font-size: 11px;
-  font-weight: bold;
-  color: var(--orange);
-  margin-right: 2px;
-  top: -1.5px;
-}
-
 /* Attention: pulsing orange dot */
 .tab.attention .tab-label::before {
+  content: '';
+  display: block;
+  position: absolute;
+  left: 16px;
+  top: 50%;
   width: 7px;
   height: 7px;
+  transform: translateY(-50%);
   border-radius: 50%;
   background: var(--orange);
-  margin-right: 6px;
   animation: pulse-dot 1.5s ease-in-out infinite;
   color: var(--orange);
 }
@@ -637,7 +668,7 @@ body {
 }
 
 .session-picker-title {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -645,7 +676,7 @@ body {
 }
 
 .session-picker-subtitle {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-muted);
   margin: 0;
   padding: 0 16px 12px;
@@ -673,7 +704,7 @@ body {
 }
 
 .session-picker-prompt {
-  font-size: 13px;
+  font-size: 16px;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -687,7 +718,7 @@ body {
 }
 
 .session-picker-time {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--text-muted);
   white-space: nowrap;
   flex-shrink: 0;
@@ -701,7 +732,7 @@ body {
   background: none;
   border: none;
   color: var(--accent);
-  font-size: 13px;
+  font-size: 16px;
   padding: 12px 16px;
   cursor: pointer;
   text-align: left;
@@ -716,7 +747,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 24px;
+  height: 30px;
   background: var(--bg-surface);
   border-top: 1px solid var(--border);
   padding: 0 12px;
@@ -812,14 +843,14 @@ body {
 .status-git-ahead,
 .status-git-behind {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 14px;
   margin-left: 3px;
 }
 /* Dismissible notifications (bottom-right, above the status bar) */
 #notification-stack {
   position: fixed;
   right: 12px;
-  bottom: 36px;
+  bottom: 42px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;

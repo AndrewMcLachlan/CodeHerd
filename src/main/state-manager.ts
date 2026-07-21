@@ -30,6 +30,15 @@ export class StateManager {
           return {
             ...DEFAULT_APP_STATE,
             ...parsed,
+            // Tabs saved before multi-agent support are all Claude Code tabs.
+            tabs: (parsed.tabs ?? []).map((tab: TabState) => ({
+              ...tab,
+              agent: tab.agent ?? 'claude',
+            })),
+            recentlyClosed: (parsed.recentlyClosed ?? []).map((tab: RecentlyClosedTab) => ({
+              ...tab,
+              agent: tab.agent ?? 'claude',
+            })),
             preferences: { ...DEFAULT_PREFERENCES, ...parsed.preferences },
           };
         }

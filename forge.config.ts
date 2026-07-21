@@ -53,7 +53,11 @@ const config: ForgeConfig = {
       }
     },
   },
-  rebuildConfig: {},
+  // node-pty ships N-API prebuilds for each supported platform. Rebuilding it
+  // discards those binaries and unnecessarily requires a native toolchain.
+  rebuildConfig: {
+    ignoreModules: ['node-pty'],
+  },
   makers,
 };
 

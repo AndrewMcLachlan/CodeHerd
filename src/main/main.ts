@@ -5,6 +5,7 @@ import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { buildAppMenu } from './menu';
+import { detectAvailableAgents } from './agent-detection';
 import { checkForUpdate } from './update-checker';
 import { IPC } from '../shared/ipc-channels';
 import type { ThemePreference, ResolvedTheme } from '../shared/types';
@@ -160,13 +161,20 @@ const isStylingMode = process.argv.includes('--styling');
 
 app.whenReady().then(() => {
   const initialState = stateManager.getState();
+  const availableAgents = detectAvailableAgents();
   // Kept up to date by rebuildMenu so a preferences-triggered rebuild
   // doesn't lose the Recently Closed submenu
   let recentlyClosed: RecentlyClosedTab[] = initialState.recentlyClosed;
   const rebuildMenu = (items?: RecentlyClosedTab[]) => {
     if (items) recentlyClosed = items;
     const prefs = stateManager.getPreferences();
-    Menu.setApplicationMenu(buildAppMenu(() => mainWindow, recentlyClosed, prefs.newTabShortcut));
+    Menu.setApplicationMenu(buildAppMenu(
+      () => mainWindow,
+      recentlyClosed,
+      prefs.newTabShortcut,
+      availableAgents,
+      prefs.defaultAgent,
+    ));
   };
   registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting, rebuildMenu);
   rebuildMenu();

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import type { TabCreateRequest, PtyDataMessage, AppState, TabState, ClaudeSession, GitInfo, RecentlyClosedTab, Preferences, TabMetadataMessage, UpdateInfo, AgentAvailability } from '../shared/types';
+import type { AgentAvailability, AgentSession, AgentType, TabCreateRequest, PtyDataMessage, AppState, TabState, GitInfo, RecentlyClosedTab, Preferences, TabMetadataMessage, TabSessionMessage, UpdateInfo } from '../shared/types';
 
 contextBridge.exposeInMainWorld('codeherd', {
   // Invoke (request/response)
@@ -16,8 +16,8 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.invoke(IPC.TAB_GET_ALL),
   reorderTabs: (tabIds: string[]): Promise<void> =>
     ipcRenderer.invoke(IPC.TAB_REORDER, tabIds),
-  listSessions: (folder: string): Promise<ClaudeSession[]> =>
-    ipcRenderer.invoke(IPC.SESSION_LIST, { folder }),
+  listSessions: (folder: string, agent: AgentType): Promise<AgentSession[]> =>
+    ipcRenderer.invoke(IPC.SESSION_LIST, { folder, agent }),
   getAvailableAgents: (): Promise<AgentAvailability> =>
     ipcRenderer.invoke(IPC.AGENT_GET_AVAILABLE),
   pickFolder: (): Promise<string | null> =>
@@ -64,6 +64,11 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.on(IPC.TAB_METADATA, listener);
     return () => { ipcRenderer.removeListener(IPC.TAB_METADATA, listener); };
   },
+  onTabSession: (callback: (msg: TabSessionMessage) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, msg: TabSessionMessage) => callback(msg);
+    ipcRenderer.on(IPC.TAB_SESSION, listener);
+    return () => { ipcRenderer.removeListener(IPC.TAB_SESSION, listener); };
+  },
   onUpdateAvailable: (callback: (info: UpdateInfo) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, info: UpdateInfo) => callback(info);
     ipcRenderer.on(IPC.UPDATE_AVAILABLE, listener);
@@ -71,8 +76,8 @@ contextBridge.exposeInMainWorld('codeherd', {
   },
 
   // Menu events (main -> renderer)
-  onMenuOpenFolder: (callback: () => void): (() => void) => {
-    const listener = () => callback();
+  onMenuOpenFolder: (callback: (agent?: AgentType) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, agent?: AgentType) => callback(agent);
     ipcRenderer.on('menu:open-folder', listener);
     return () => { ipcRenderer.removeListener('menu:open-folder', listener); };
   },

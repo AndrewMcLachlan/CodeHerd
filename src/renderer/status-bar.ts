@@ -138,7 +138,7 @@ export class StatusBar {
 
     // Context fill, e.g. "ctx 22%" — colour ramps as it approaches the window limit.
     if (meta?.contextTokens && meta.contextLimit) {
-      const pct = Math.round((meta.contextTokens / meta.contextLimit) * 100);
+      const pct = Math.min(100, Math.max(0, Math.round((meta.contextTokens / meta.contextLimit) * 100)));
       this.contextEl.textContent = `Context ${pct}% used`;
       this.contextEl.title = `Context: ${meta.contextTokens.toLocaleString()} / ${meta.contextLimit.toLocaleString()} tokens`;
       this.contextEl.classList.toggle('status-context-warn', pct >= 75 && pct < 90);
@@ -157,6 +157,7 @@ export class StatusBar {
    * Derives the label generically so new models need no lookup table.
    */
   private formatModelName(id: string): string {
+    if (!id.startsWith('claude-')) return id;
     const core = id.replace(/^claude-/, '').replace(/-\d{6,}$/, '');
     const [family, ...version] = core.split('-');
     if (!family) return id;
