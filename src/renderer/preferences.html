@@ -313,24 +313,14 @@
         <div class="setting-row">
           <div class="setting-copy">
             <label for="font-select">Terminal font</label>
-            <span class="hint">Applied to every open and new terminal.</span>
+            <span class="hint" id="font-hint">Loading installed monospaced fonts…</span>
           </div>
           <div class="setting-control">
-            <select id="font-select">
-              <option value="">System default</option>
-              <option value="Cascadia Code">Cascadia Code</option>
-              <option value="Cascadia Mono">Cascadia Mono</option>
-              <option value="Consolas">Consolas</option>
-              <option value="Fira Code">Fira Code</option>
-              <option value="JetBrains Mono">JetBrains Mono</option>
-              <option value="Menlo">Menlo</option>
-              <option value="Monaco">Monaco</option>
-              <option value="Source Code Pro">Source Code Pro</option>
-              <option value="Ubuntu Mono">Ubuntu Mono</option>
-              <option value="__custom__">Custom...</option>
+            <select id="font-select" disabled>
+              <option value="">Loading installed fonts…</option>
             </select>
             <div id="custom-font-row" style="display:none">
-              <input type="text" id="custom-font" placeholder="Enter font family name">
+              <input type="text" id="custom-font" placeholder="Enter font family name" autocomplete="off" spellcheck="false">
             </div>
           </div>
         </div>
@@ -452,12 +442,13 @@
 
     const warnClose = document.getElementById('warn-close');
     const fontSelect = document.getElementById('font-select');
+    const customFontRow = document.getElementById('custom-font-row');
+    const customFont = document.getElementById('custom-font');
+    const fontHint = document.getElementById('font-hint');
     const fontSizeInput = document.getElementById('font-size');
     const themeSelect = document.getElementById('theme-select');
     const defaultAgentSelect = document.getElementById('default-agent-select');
     const tabSwitchSelect = document.getElementById('tab-switch-select');
-    const customFontRow = document.getElementById('custom-font-row');
-    const customFont = document.getElementById('custom-font');
     const foregroundInput = document.getElementById('terminal-foreground');
     const backgroundInput = document.getElementById('terminal-background');
     const foregroundValue = document.getElementById('foreground-value');
@@ -479,6 +470,94 @@
     };
     let terminalForeground = '';
     let terminalBackground = '';
+    let savedFontFamily = null;
+    let installedFontFamilies = null;
+
+    const quoteFontFamily = (family) => `"${family.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    const selectedFontFamily = () => fontSelect.value === '__custom__'
+      ? customFont.value.trim()
+      : fontSelect.value;
+    const renderTerminalFont = () => {
+      const family = selectedFontFamily();
+      terminalPreview.style.fontFamily = family
+        ? `${quoteFontFamily(family)}, monospace`
+        : "'Cascadia Code', 'Fira Code', Consolas, monospace";
+    };
+
+    const syncFontControl = () => {
+      if (savedFontFamily === null || installedFontFamilies === null) return;
+
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'System default';
+      const familyOptions = installedFontFamilies.map((family) => {
+        const option = document.createElement('option');
+        option.value = family;
+        option.textContent = family;
+        return option;
+      });
+      const customOption = document.createElement('option');
+      customOption.value = '__custom__';
+      customOption.textContent = 'Custom…';
+      fontSelect.replaceChildren(defaultOption, ...familyOptions, customOption);
+
+      const matchingFamily = installedFontFamilies.find(
+        family => family.toLocaleLowerCase() === savedFontFamily.toLocaleLowerCase(),
+      );
+      if (!savedFontFamily) {
+        fontSelect.value = '';
+      } else if (matchingFamily) {
+        fontSelect.value = matchingFamily;
+      } else {
+        fontSelect.value = '__custom__';
+        customFont.value = savedFontFamily;
+      }
+      customFontRow.style.display = fontSelect.value === '__custom__' ? 'block' : 'none';
+      fontSelect.disabled = false;
+      renderTerminalFont();
+    };
+
+    const loadInstalledFonts = async () => {
+      if (!('queryLocalFonts' in window)) {
+        fontHint.textContent = 'Choose Custom to type a family name, or use the system default.';
+        installedFontFamilies = [];
+        syncFontControl();
+        return;
+      }
+
+      try {
+        const faces = await window.queryLocalFonts();
+        const uniqueFamilies = new Map();
+        for (const face of faces) {
+          const family = face.family.trim();
+          if (family && !uniqueFamilies.has(family.toLocaleLowerCase())) {
+            uniqueFamilies.set(family.toLocaleLowerCase(), family);
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        const samples = ['i', 'W', 'm', '0', '@', ' '];
+        const isLikelyMonospaced = (family) => {
+          // A proportional fallback makes an unresolvable family fail this test
+          // instead of being mistaken for the generic monospace fallback.
+          context.font = `48px ${quoteFontFamily(family)}, serif`;
+          const widths = samples.map(sample => context.measureText(sample).width);
+          return widths.every(width => Math.abs(width - widths[0]) < 0.01);
+        };
+
+        installedFontFamilies = [...uniqueFamilies.values()]
+          .filter(isLikelyMonospaced)
+          .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+        syncFontControl();
+        const noun = installedFontFamilies.length === 1 ? 'font' : 'fonts';
+        fontHint.textContent = `${installedFontFamilies.length} installed monospaced ${noun}. Choose Custom to type another name.`;
+      } catch {
+        fontHint.textContent = 'Installed fonts could not be loaded. Choose Custom to type a family name.';
+        installedFontFamilies = [];
+        syncFontControl();
+      }
+    };
 
     const selectedThemeDefaults = () => {
       const selected = themeSelect.value === 'system' ? resolvedTheme : themeSelect.value;
@@ -517,6 +596,13 @@
       renderTerminalColours();
     });
     themeSelect.addEventListener('change', renderTerminalColours);
+    fontSelect.addEventListener('change', () => {
+      const isCustom = fontSelect.value === '__custom__';
+      customFontRow.style.display = isCustom ? 'block' : 'none';
+      if (isCustom) customFont.focus();
+      renderTerminalFont();
+    });
+    customFont.addEventListener('input', renderTerminalFont);
 
     // --- New Tab shortcut: VS Code-style key capture (#69) ---
     const isMac = navigator.platform.startsWith('Mac');
@@ -608,10 +694,6 @@
       renderShortcut();
     });
 
-    fontSelect.addEventListener('change', () => {
-      customFontRow.style.display = fontSelect.value === '__custom__' ? 'block' : 'none';
-    });
-
     // Load current preferences
     Promise.all([
       window.preferencesAPI.getPreferences(),
@@ -635,25 +717,15 @@
         : (agents.claude ? 'claude' : (agents.codex ? 'codex' : preferredAgent));
       shortcutValue = prefs.newTabShortcut || DEFAULT_SHORTCUT;
       renderShortcut();
-      // Check if font matches a preset option
-      const options = Array.from(fontSelect.options).map(o => o.value);
-      if (options.includes(prefs.fontFamily)) {
-        fontSelect.value = prefs.fontFamily;
-      } else if (prefs.fontFamily) {
-        fontSelect.value = '__custom__';
-        customFontRow.style.display = 'block';
-        customFont.value = prefs.fontFamily;
-      }
+      savedFontFamily = prefs.fontFamily || '';
+      syncFontControl();
     });
+    loadInstalledFonts();
 
     document.getElementById('save-btn').addEventListener('click', () => {
-      let fontFamily = fontSelect.value;
-      if (fontFamily === '__custom__') {
-        fontFamily = customFont.value.trim();
-      }
       window.preferencesAPI.savePreferences({
         warnBeforeClosingTabs: warnClose.checked,
-        fontFamily,
+        fontFamily: selectedFontFamily(),
         fontSize: normalizeFontSize(fontSizeInput.value),
         terminalForeground,
         terminalBackground,

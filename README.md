@@ -8,6 +8,7 @@ A desktop app for managing multiple Claude Code and OpenAI Codex CLI instances. 
 - **Agent-aware new tabs** - Choose any detected CLI agent and configure your preferred default
 - **Session persistence** - Tabs auto-resume when you restart the app
 - **Session sidebar** - Browse and resume each agent's past sessions per project folder
+- **Named and coloured tabs** - Supports agent `/rename` metadata and a `/color` palette for both Claude Code and Codex
 - **Status bar** - Shows current folder, git branch, dirty state, and terminal status
 - **Graceful shutdown** - Cleanly exits agent processes before falling back to a process-tree kill
 

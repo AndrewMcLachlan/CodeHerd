@@ -281,7 +281,7 @@ body {
   display: none;
 }
 
-/* Tabs that Claude Code has assigned a custom colour via /color.
+/* Tabs that an agent has assigned a custom colour via /color.
  * The top border becomes the chosen colour and gets thicker so the tab stands out. */
 .tab[data-colored] {
   border-top: 3px solid var(--tab-color);
@@ -367,23 +367,98 @@ body {
   color: var(--text-primary);
 }
 
-#new-tab-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 24px;
-  padding: 0 10px;
-  cursor: pointer;
-  transition: color 0.15s;
-  flex-shrink: 0;
-  height: 32px;
+#new-tab-controls {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  height: 28px;
+  flex-shrink: 0;
+  margin-left: 4px;
+  margin-bottom: 4px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg-overlay) 48%, var(--tab-inactive));
+  border-radius: 4px;
   -webkit-app-region: no-drag;
 }
 
-#new-tab-btn:hover {
+#new-tab-btn,
+#new-tab-menu-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+#new-tab-btn {
+  width: 34px;
+  font-size: 24px;
+  padding: 0 0 2px;
+}
+
+#new-tab-menu-btn {
+  width: 22px;
+  padding: 0;
+  border-left: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+}
+
+#new-tab-menu-btn[hidden] {
+  display: none;
+}
+
+.new-tab-chevron {
+  width: 7px;
+  height: 7px;
+  margin-top: -3px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+
+#new-tab-btn:hover,
+#new-tab-menu-btn:hover,
+#new-tab-menu-btn.active {
   color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-overlay) 72%, var(--tab-inactive));
+}
+
+.new-tab-agent-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 190px;
+  padding: 4px 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.new-tab-agent-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 14px;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.new-tab-agent-option:hover,
+.new-tab-agent-option:focus-visible {
+  color: var(--bg-base);
+  background: var(--accent);
+  outline: none;
+}
+
+.new-tab-agent-option .agent-icon {
+  opacity: 0.92;
 }
 
 /* Main content area */
@@ -522,6 +597,86 @@ body {
   position: absolute;
   inset: 0;
   padding: 4px;
+}
+
+/* Simulated Codex /color palette */
+.color-picker-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg-base) 72%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.color-picker-dialog {
+  width: min(390px, calc(100% - 32px));
+  padding: 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+  user-select: none;
+}
+
+.color-picker-title {
+  margin-bottom: 14px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.color-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+
+.color-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 9px;
+  color: var(--text-secondary);
+  background: var(--bg-overlay);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.color-picker-option.selected {
+  border-color: var(--text-muted);
+}
+
+.color-picker-option:hover,
+.color-picker-option:focus {
+  color: var(--text-primary);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.color-picker-swatch {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 30%, transparent);
+  border-radius: 50%;
+}
+
+.color-picker-swatch.default {
+  background: linear-gradient(135deg, transparent 42%, var(--text-muted) 43%, var(--text-muted) 57%, transparent 58%);
+}
+
+.color-picker-hint {
+  margin-top: 13px;
+  color: var(--text-muted);
+  font-size: 11px;
 }
 
 .terminal-wrapper .xterm {

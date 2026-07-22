@@ -83,6 +83,8 @@ export interface AppState {
     collapsed: boolean;
   };
   recentlyClosed: RecentlyClosedTab[];
+  /** CodeHerd-owned colours for Codex sessions, which have no native /color metadata. */
+  codexSessionColors: Record<SessionId, string>;
   preferences: Preferences;
   /** Latest release version the user dismissed the update notification for. */
   dismissedUpdateVersion: string | null;
@@ -138,7 +140,7 @@ export interface TabMetadataMessage {
   tabId: TabId;
   /** Present when the agent has set or cleared a name. `null` means cleared. */
   name?: string | null;
-  /** Claude-only: present when /color sets or clears a color. `null` means cleared. */
+  /** Present when /color sets or clears a color. `null` means cleared. */
   color?: string | null;
   /** Present when the session's active model changes. Raw model id; the renderer formats it for display. */
   model?: string;
@@ -154,6 +156,12 @@ export interface TabMetadataMessage {
 export interface TabSessionMessage {
   tabId: TabId;
   sessionId: SessionId;
+}
+
+/** Requests CodeHerd's simulated Codex /color palette for a tab. */
+export interface TabColorPickerMessage {
+  tabId: TabId;
+  color?: string;
 }
 
 export interface GitInfo {

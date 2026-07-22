@@ -56,7 +56,8 @@ export function resolveClaudePath(): string {
 
 /**
  * Command + args to run `claude <args>` as a plain (non-PTY) child process.
- * Windows goes through cmd.exe so the shim resolves, mirroring how PtyManager spawns.
+ * This non-interactive Windows path uses cmd.exe so npm's .cmd shim resolves;
+ * interactive agent sessions choose their host shell separately in PtyManager.
  */
 export function claudeCommand(args: string[]): { file: string; args: string[] } {
   const claudePath = resolveClaudePath();

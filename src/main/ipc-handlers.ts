@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow, dialog, clipboard, app, shell, nativeTheme } from 'electron';
+import type { WebContents } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { IPC } from '../shared/ipc-channels';
@@ -14,6 +15,8 @@ import { detectAvailableAgents } from './agent-detection';
 import { getGitInfo } from './git-info';
 import { detectCodexAttention, detectStatus } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
+import { CodexCommandTracker } from './codex-command-tracker';
+import { normalizeTabColor } from '../shared/tab-colors';
 
 function resolveTheme(pref: ThemePreference): ResolvedTheme {
   if (pref === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
@@ -38,6 +41,7 @@ export function registerIpcHandlers(
   const agentRegistry = new AgentRegistry();
   const sessionTracker = new SessionTracker(agentRegistry);
   const availableAgents = detectAvailableAgents();
+  const codexCommandTracker = new CodexCommandTracker();
 
   // Restoring tabs is the first thing the renderer does, and each one needs to know
   // whether its session is a live background agent — warm the cache now so it doesn't
@@ -134,6 +138,17 @@ export function registerIpcHandlers(
     stateManager.save();
   }
 
+  function setCodexTabColor(tabId: string, color: string | null): void {
+    const tab = tabs.get(tabId);
+    if (!tab || tab.agent !== 'codex') return;
+
+    if (color) tab.color = color;
+    else delete tab.color;
+    stateManager.setCodexSessionColor(tab.sessionId, color);
+    saveTabState();
+    safeSend(IPC.TAB_METADATA, { tabId, color } satisfies TabMetadataMessage);
+  }
+
   const knownCodexSessions = new Set<string>();
   const claimedCodexSessions = new Set<string>();
   let codexInventoryReady = false;
@@ -144,9 +159,12 @@ export function registerIpcHandlers(
     let durable = false;
     const metadata: TabMetadataMessage = { tabId: tab.id };
     if (tab.sessionId !== ref.sessionId) {
-      claimedCodexSessions.delete(tab.sessionId);
+      const previousSessionId = tab.sessionId;
+      claimedCodexSessions.delete(previousSessionId);
       tab.sessionId = ref.sessionId;
       claimedCodexSessions.add(ref.sessionId);
+      stateManager.moveCodexSessionColor(previousSessionId, ref.sessionId);
+      if (tab.color) stateManager.setCodexSessionColor(ref.sessionId, tab.color);
       tab.lastActivityAt = Date.now();
       ptyManager.setSessionId(tab.id, ref.sessionId);
       safeSend(IPC.TAB_SESSION, { tabId: tab.id, sessionId: ref.sessionId });
@@ -347,6 +365,9 @@ export function registerIpcHandlers(
     const knownCodexRuntime = knownCodex
       ? sessionTracker.getCodexSessionRuntime(knownCodex)
       : undefined;
+    const knownCodexColor = requestedAgent === 'codex'
+      ? stateManager.getCodexSessionColor(sessionId)
+      : undefined;
     const initialLabel = request.label?.trim()
       || knownClaude?.name?.trim()
       || knownCodex?.name?.trim()
@@ -360,6 +381,7 @@ export function registerIpcHandlers(
       sessionId,
       label: initialLabel,
       ...(knownClaude?.color ? { color: knownClaude.color } : {}),
+      ...(knownCodexColor ? { color: knownCodexColor } : {}),
       ...(knownClaude?.model ? { model: knownClaude.model } : {}),
       ...(knownClaude?.contextTokens != null ? { contextTokens: knownClaude.contextTokens } : {}),
       ...(knownClaude?.contextLimit != null ? { contextLimit: knownClaude.contextLimit } : {}),
@@ -395,6 +417,7 @@ export function registerIpcHandlers(
     const tab = tabs.get(tabId);
     if (tab?.agent === 'claude') metadataWatcher.unregisterTab(tab.sessionId);
     if (tab?.agent === 'codex') claimedCodexSessions.delete(tab.sessionId);
+    codexCommandTracker.forget(tabId);
     await ptyManager.gracefulKill(tabId);
     tabs.delete(tabId);
     saveTabState();
@@ -421,6 +444,23 @@ export function registerIpcHandlers(
     const tab = tabs.get(tabId);
     if (tab) {
       tab.lastActivityAt = Date.now();
+      if (tab.agent === 'codex') {
+        // The transcript-based status poll can trail the visible composer by up to a
+        // second, so command recognition must not depend on a cached `waiting` state.
+        const command = codexCommandTracker.handleInput(tabId, data);
+        if (command) {
+          // The command's text has already reached Codex's composer one keystroke at a
+          // time. Move to the end and backspace exactly that text, but do not submit it
+          // to the agent. Codex binds Ctrl+U to move rather than readline-style clearing.
+          ptyManager.write(tabId, `\x05${'\x7f'.repeat(command.clearLength)}`);
+          if (command.type === 'set-color') {
+            setCodexTabColor(tabId, command.color);
+          } else {
+            safeSend(IPC.TAB_COLOR_PICKER, { tabId, color: tab.color });
+          }
+          return;
+        }
+      }
       // Enter submits the Codex composer. Publish running before forwarding it so the
       // renderer hides the caret before Codex begins its first animated redraw.
       const isCodexSubmit = tab.agent === 'codex' && tab.status === 'waiting' && data === '\r';
@@ -444,6 +484,18 @@ export function registerIpcHandlers(
     }
     ptyManager.write(tabId, data);
   });
+
+  ipcMain.handle(
+    IPC.TAB_SET_COLOR,
+    async (_event, { tabId, color }: { tabId: string; color: string | null }): Promise<void> => {
+      if (color === null) {
+        setCodexTabColor(tabId, null);
+        return;
+      }
+      const normalized = normalizeTabColor(color);
+      if (normalized) setCodexTabColor(tabId, normalized);
+    },
+  );
 
   ipcMain.handle(IPC.TAB_GET_ALL, async (): Promise<TabState[]> => {
     return Array.from(tabs.values());
@@ -662,6 +714,19 @@ export function registerIpcHandlers(
             nodeIntegration: false,
             preload: path.join(__dirname, 'preferences-preload.js'),
           },
+        });
+        const canAccessLocalFonts = (requestingContents: WebContents | null, permission: string) => (
+          permission === 'local-fonts'
+          && prefsWin !== null
+          && !prefsWin.isDestroyed()
+          && requestingContents === prefsWin.webContents
+        );
+        const prefsSession = prefsWin.webContents.session;
+        prefsSession.setPermissionCheckHandler((requestingContents, permission) => (
+          canAccessLocalFonts(requestingContents, permission)
+        ));
+        prefsSession.setPermissionRequestHandler((requestingContents, permission, callback) => {
+          callback(canAccessLocalFonts(requestingContents, permission));
         });
         prefsWin.on('closed', () => { prefsWin = null; });
         prefsWin.loadFile(path.join(__dirname, 'preferences.html'));
