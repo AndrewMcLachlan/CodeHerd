@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
 import { STATE_DIR, DEFAULT_APP_STATE, DEFAULT_PREFERENCES } from '../shared/constants';
-import type { AppState, TabState, TabId, RecentlyClosedTab, Preferences } from '../shared/types';
+import type { AppState, TabState, TabId, SessionId, RecentlyClosedTab, Preferences } from '../shared/types';
 
 // Dev runs use ~/.codeherd-dev so they never touch the installed app's settings
 // (parallel to the userData split in main.ts). Pass --live-state (npm run dev:live) to
@@ -82,6 +82,24 @@ export class StateManager {
 
   setRecentlyClosed(items: RecentlyClosedTab[]): void {
     this.state.recentlyClosed = items;
+  }
+
+  getCodexSessionColor(sessionId: SessionId): string | undefined {
+    return this.state.codexSessionColors?.[sessionId];
+  }
+
+  setCodexSessionColor(sessionId: SessionId, color: string | null): void {
+    this.state.codexSessionColors ??= {};
+    if (color) this.state.codexSessionColors[sessionId] = color;
+    else delete this.state.codexSessionColors[sessionId];
+  }
+
+  moveCodexSessionColor(fromSessionId: SessionId, toSessionId: SessionId): void {
+    if (fromSessionId === toSessionId) return;
+    const color = this.getCodexSessionColor(fromSessionId);
+    if (!color) return;
+    this.setCodexSessionColor(toSessionId, color);
+    this.setCodexSessionColor(fromSessionId, null);
   }
 
   setDismissedUpdateVersion(version: string | null): void {

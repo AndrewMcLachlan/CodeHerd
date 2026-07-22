@@ -3,34 +3,7 @@ import { getNewTabMenuOptions, resolveDefaultAgent, type NewTabMenuOption } from
 import { TerminalManager } from './terminal-manager';
 import { SessionPicker } from './session-picker';
 import { createAgentIcon } from './agent-icon';
-
-/**
- * Map Claude Code's named colors (e.g. "red") to catppuccin hex values that harmonise with the
- * app's existing palette. Unknown values (including hex codes from `/color #abc123`) pass through.
- */
-const NAMED_COLOR_MAP: Record<string, string> = {
-  red: '#f38ba8',
-  orange: '#fab387',
-  yellow: '#f9e2af',
-  green: '#a6e3a1',
-  teal: '#94e2d5',
-  cyan: '#94e2d5',
-  blue: '#89b4fa',
-  sapphire: '#74c7ec',
-  sky: '#89dceb',
-  lavender: '#b4befe',
-  magenta: '#f5c2e7',
-  pink: '#f5c2e7',
-  purple: '#cba6f7',
-  mauve: '#cba6f7',
-  white: '#cdd6f4',
-  gray: '#6c7086',
-  grey: '#6c7086',
-};
-
-function resolveCssColor(value: string): string {
-  return NAMED_COLOR_MAP[value.toLowerCase()] ?? value;
-}
+import { resolveTabColor } from '../shared/tab-colors';
 
 export class TabManager {
   private tabs = new Map<TabId, TabState>();
@@ -239,7 +212,7 @@ export class TabManager {
   private applyColorToElement(el: HTMLElement, color: string | undefined): void {
     if (color) {
       el.dataset.colored = 'true';
-      el.style.setProperty('--tab-color', resolveCssColor(color));
+      el.style.setProperty('--tab-color', resolveTabColor(color));
     } else {
       delete el.dataset.colored;
       el.style.removeProperty('--tab-color');

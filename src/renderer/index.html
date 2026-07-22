@@ -13,7 +13,12 @@
     <div id="titlebar">
       <button id="app-menu-btn" title="Menu"><img id="app-menu-icon" src="" alt=""></button>
       <div id="tab-bar"></div>
-      <button id="new-tab-btn" title="New Tab (Ctrl+T)">+</button>
+      <div id="new-tab-controls">
+        <button id="new-tab-btn" title="New Tab (Ctrl+T)" aria-label="New tab">+</button>
+        <button id="new-tab-menu-btn" title="Choose agent" aria-label="Choose agent" aria-haspopup="menu" aria-expanded="false" hidden>
+          <span class="new-tab-chevron" aria-hidden="true"></span>
+        </button>
+      </div>
       <div id="titlebar-drag"></div>
     </div>
     <div id="main-content">

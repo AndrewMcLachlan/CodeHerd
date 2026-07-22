@@ -4,6 +4,8 @@ import type { AgentType, TabId, FolderPath, SessionId } from '../shared/types';
 import { v4 as uuidv4 } from 'uuid';
 import { getLoginShellEnv } from './claude-cli';
 import { resolveCommandPath } from './agent-detection';
+import { buildPowerShellAgentCommand, resolveWindowsPtyShell } from './pty-shell';
+import type { WindowsPtyShell } from './pty-shell';
 
 interface PtyEntry {
   process: pty.IPty;
@@ -40,26 +42,32 @@ export function buildAgentArgs(agent: AgentType, sessionId: SessionId, options: 
 export class PtyManager {
   private ptys = new Map<TabId, PtyEntry>();
   private shellEnv = getLoginShellEnv();
+  private windowsPtyShell: WindowsPtyShell | null = null;
 
   spawn(tabId: TabId, agent: AgentType, folder: FolderPath, options: SpawnOptions = {}): { sessionId: SessionId } {
     const { resumeSessionId, cols, rows } = options;
     const sessionId = resumeSessionId ?? uuidv4();
     const args = buildAgentArgs(agent, sessionId, options);
 
-    // On Windows, spawn via cmd.exe so node-pty gets a proper console.
-    // On macOS/Linux, use the user's login shell so their PATH is loaded
-    // (critical when the app is launched from Finder/dock rather than terminal).
+    // On Windows, prefer PowerShell 7+, fall back to Windows PowerShell, and use
+    // cmd.exe only as a last resort. On macOS/Linux, use the user's login shell
+    // so their PATH is loaded (critical when launched from Finder/dock).
     const isWin = process.platform === 'win32';
     const userShell = process.env.SHELL || '/bin/zsh';
-    const shell = isWin ? 'cmd.exe' : userShell;
+    const windowsShell = isWin
+      ? (this.windowsPtyShell ??= resolveWindowsPtyShell(this.shellEnv))
+      : null;
+    const shell = windowsShell?.executable ?? userShell;
 
     // Resolve the agent's full path from the login shell env, since the
     // non-interactive PTY shell may not have it on PATH.
-    const agentPath = isWin ? agent : (resolveCommandPath(agent, this.shellEnv) || agent);
+    const agentPath = resolveCommandPath(agent, this.shellEnv) || agent;
     const quote = (value: string) => `'${value.replace(/'/g, `'"'"'`)}'`;
 
-    const shellArgs = isWin
-      ? ['/c', agentPath, ...args]
+    const shellArgs = windowsShell
+      ? (windowsShell.kind === 'cmd'
+        ? ['/c', agent, ...args]
+        : ['-NoLogo', '-Command', buildPowerShellAgentCommand(agentPath, args)])
       : ['-l', '-c', [agentPath, ...args].map(quote).join(' ')];
 
     const ptyProcess = pty.spawn(shell, shellArgs, {
@@ -67,7 +75,7 @@ export class PtyManager {
       cols: cols || 80,
       rows: rows || 24,
       cwd: folder,
-      env: { ...this.shellEnv, TERM: 'xterm-256color', SHELL: userShell },
+      env: { ...this.shellEnv, TERM: 'xterm-256color', SHELL: shell },
     });
 
     this.ptys.set(tabId, { process: ptyProcess, sessionId, agent });

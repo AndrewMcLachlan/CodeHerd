@@ -110,6 +110,7 @@ export class TerminalManager {
     element.className = 'terminal-wrapper';
     element.dataset.tabId = tabId;
     element.style.display = 'none';
+    element.style.backgroundColor = this.getTerminalTheme().background ?? '';
     this.container.appendChild(element);
 
     // Mutable ref so all closures see the current ID after rekey
@@ -300,6 +301,10 @@ export class TerminalManager {
     this.terminals.get(tabId)?.terminal.write(data);
   }
 
+  focus(tabId: TabId): void {
+    this.terminals.get(tabId)?.terminal.focus();
+  }
+
   dispose(tabId: TabId): void {
     const entry = this.terminals.get(tabId);
     if (entry) {
@@ -326,7 +331,8 @@ export class TerminalManager {
 
   setFontFamily(font: string): void {
     const DEFAULT_FONT = "'Cascadia Code', 'Fira Code', Consolas, monospace";
-    this.fontFamily = font ? `'${font}', ${DEFAULT_FONT}` : DEFAULT_FONT;
+    const escapedFont = font.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    this.fontFamily = escapedFont ? `'${escapedFont}', ${DEFAULT_FONT}` : DEFAULT_FONT;
     for (const entry of this.terminals.values()) {
       entry.terminal.options.fontFamily = this.fontFamily;
     }
@@ -357,8 +363,10 @@ export class TerminalManager {
   setColors(foreground: string | undefined, background: string | undefined): void {
     this.terminalForeground = foreground?.trim() ?? '';
     this.terminalBackground = background?.trim() ?? '';
+    const theme = this.getTerminalTheme();
     for (const entry of this.terminals.values()) {
-      entry.terminal.options.theme = withCursorVisibility(this.getTerminalTheme(), entry.cursorSuppressed);
+      entry.terminal.options.theme = withCursorVisibility(theme, entry.cursorSuppressed);
+      entry.element.style.backgroundColor = theme.background ?? '';
     }
   }
 
@@ -388,6 +396,7 @@ export class TerminalManager {
     const xtermTheme = this.getTerminalTheme();
     for (const entry of this.terminals.values()) {
       entry.terminal.options.theme = withCursorVisibility(xtermTheme, entry.cursorSuppressed);
+      entry.element.style.backgroundColor = xtermTheme.background ?? '';
     }
   }
 }

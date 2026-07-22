@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import type { AgentAvailability, AgentSession, AgentType, TabCreateRequest, PtyDataMessage, AppState, TabState, GitInfo, RecentlyClosedTab, Preferences, TabMetadataMessage, TabSessionMessage, UpdateInfo } from '../shared/types';
+import type { AgentAvailability, AgentSession, AgentType, TabCreateRequest, PtyDataMessage, AppState, TabState, GitInfo, RecentlyClosedTab, Preferences, TabColorPickerMessage, TabMetadataMessage, TabSessionMessage, UpdateInfo } from '../shared/types';
 
 contextBridge.exposeInMainWorld('codeherd', {
   // Invoke (request/response)
@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.invoke(IPC.TAB_RESIZE, { tabId, cols, rows }),
   inputToTab: (tabId: string, data: string): Promise<void> =>
     ipcRenderer.invoke(IPC.TAB_INPUT, { tabId, data }),
+  setTabColor: (tabId: string, color: string | null): Promise<void> =>
+    ipcRenderer.invoke(IPC.TAB_SET_COLOR, { tabId, color }),
   getAllTabs: (): Promise<TabState[]> =>
     ipcRenderer.invoke(IPC.TAB_GET_ALL),
   reorderTabs: (tabIds: string[]): Promise<void> =>
@@ -68,6 +70,11 @@ contextBridge.exposeInMainWorld('codeherd', {
     const listener = (_event: Electron.IpcRendererEvent, msg: TabSessionMessage) => callback(msg);
     ipcRenderer.on(IPC.TAB_SESSION, listener);
     return () => { ipcRenderer.removeListener(IPC.TAB_SESSION, listener); };
+  },
+  onTabColorPicker: (callback: (msg: TabColorPickerMessage) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, msg: TabColorPickerMessage) => callback(msg);
+    ipcRenderer.on(IPC.TAB_COLOR_PICKER, listener);
+    return () => { ipcRenderer.removeListener(IPC.TAB_COLOR_PICKER, listener); };
   },
   onUpdateAvailable: (callback: (info: UpdateInfo) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, info: UpdateInfo) => callback(info);

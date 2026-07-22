@@ -40,6 +40,7 @@ export const DEFAULT_APP_STATE = {
   windowBounds: DEFAULT_WINDOW_BOUNDS,
   sidebar: DEFAULT_SIDEBAR,
   recentlyClosed: [],
+  codexSessionColors: {},
   preferences: DEFAULT_PREFERENCES,
   dismissedUpdateVersion: null as string | null,
 };

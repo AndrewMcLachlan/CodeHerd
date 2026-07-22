@@ -1,10 +1,12 @@
-import type { AgentAvailability, AgentSession, AgentType, PtyDataMessage, TabState, AppState, GitInfo, Preferences, NewTabShortcut, RecentlyClosedTab, TabMetadataMessage, TabSessionMessage, UpdateInfo } from '../shared/types';
+import type { AgentAvailability, AgentSession, AgentType, PtyDataMessage, TabState, AppState, GitInfo, Preferences, NewTabShortcut, RecentlyClosedTab, TabColorPickerMessage, TabMetadataMessage, TabSessionMessage, UpdateInfo } from '../shared/types';
 import { DEFAULT_NEW_TAB_SHORTCUT, formatShortcut, matchesShortcut } from '../shared/shortcut';
 import { DEFAULT_TERMINAL_FONT_SIZE_POINTS, TerminalManager } from './terminal-manager';
 import { TabManager } from './tab-manager';
 import { Sidebar } from './sidebar';
 import { StatusBar, type StatusMeta } from './status-bar';
 import { AppMenu } from './menu-bar';
+import { ColorPicker } from './color-picker';
+import { createAgentIcon } from './agent-icon';
 import type { MenuItem } from './menu-bar';
 
 /** Snapshot the session indicators the status bar renders off a tab. */
@@ -23,6 +25,7 @@ declare global {
       closeTab: (tabId: string) => Promise<void>;
       resizeTab: (tabId: string, cols: number, rows: number) => Promise<void>;
       inputToTab: (tabId: string, data: string) => Promise<void>;
+      setTabColor: (tabId: string, color: string | null) => Promise<void>;
       reorderTabs: (tabIds: string[]) => Promise<void>;
       getAllTabs: () => Promise<TabState[]>;
       listSessions: (folder: string, agent: AgentType) => Promise<AgentSession[]>;
@@ -44,6 +47,7 @@ declare global {
       onTabStatus: (cb: (msg: { tabId: string; status: string }) => void) => () => void;
       onTabMetadata: (cb: (msg: TabMetadataMessage) => void) => () => void;
       onTabSession: (cb: (msg: TabSessionMessage) => void) => () => void;
+      onTabColorPicker: (cb: (msg: TabColorPickerMessage) => void) => () => void;
       onMenuOpenFolder: (cb: (agent?: AgentType) => void) => () => void;
       onMenuCloseTab: (cb: () => void) => () => void;
       onMenuToggleSidebar: (cb: () => void) => () => void;
@@ -162,6 +166,10 @@ async function init(): Promise<void> {
   const tabManager = new TabManager(terminalManager, availableAgents, prefs.defaultAgent ?? 'claude');
   const sidebar = new Sidebar(sidebarState.width, sidebarState.collapsed);
   const statusBar = new StatusBar();
+  const colorPicker = new ColorPicker(
+    (tabId, color) => { void window.codeherd.setTabColor(tabId, color); },
+    (tabId) => terminalManager.focus(tabId),
+  );
 
   // Set app icon
   (document.getElementById('app-menu-icon') as HTMLImageElement).src = './menu-icon.png';
@@ -185,6 +193,82 @@ async function init(): Promise<void> {
   };
   const matchesNewTabShortcut = (e: KeyboardEvent): boolean => matchesShortcut(newTabShortcut, e);
 
+  const newTabButton = document.getElementById('new-tab-btn') as HTMLButtonElement;
+  const newTabMenuButton = document.getElementById('new-tab-menu-btn') as HTMLButtonElement;
+  const detectedAgentCount = Number(availableAgents.claude) + Number(availableAgents.codex);
+  newTabMenuButton.hidden = detectedAgentCount < 2;
+  let newTabAgentMenu: HTMLDivElement | null = null;
+
+  const closeNewTabAgentMenu = (restoreFocus = false) => {
+    if (!newTabAgentMenu) return;
+    newTabAgentMenu.remove();
+    newTabAgentMenu = null;
+    newTabMenuButton.classList.remove('active');
+    newTabMenuButton.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) newTabMenuButton.focus();
+  };
+
+  const openNewTabAgentMenu = () => {
+    closeNewTabAgentMenu();
+    const menu = document.createElement('div');
+    menu.className = 'new-tab-agent-menu';
+    menu.setAttribute('role', 'menu');
+
+    for (const [index, option] of tabManager.getNewTabMenuOptions().entries()) {
+      const agent = option.agent;
+      if (!agent) continue;
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'new-tab-agent-option';
+      item.setAttribute('role', 'menuitem');
+      item.setAttribute('aria-label', `${agent === 'claude' ? 'Claude Code' : 'Codex'}${index === 0 ? ' (default)' : ''}`);
+      item.appendChild(createAgentIcon(agent));
+      const label = document.createElement('span');
+      label.className = 'new-tab-agent-label';
+      label.textContent = agent === 'claude' ? 'Claude Code' : 'Codex';
+      item.appendChild(label);
+      item.addEventListener('click', () => {
+        closeNewTabAgentMenu();
+        void tabManager.openNewTab(agent);
+      });
+      menu.appendChild(item);
+    }
+
+    menu.addEventListener('keydown', (event) => {
+      const items = [...menu.querySelectorAll<HTMLButtonElement>('.new-tab-agent-option')];
+      const current = items.indexOf(document.activeElement as HTMLButtonElement);
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const delta = event.key === 'ArrowDown' ? 1 : -1;
+        items[(current + delta + items.length) % items.length]?.focus();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closeNewTabAgentMenu(true);
+      }
+    });
+
+    document.body.appendChild(menu);
+    const buttonRect = newTabMenuButton.getBoundingClientRect();
+    menu.style.top = `${buttonRect.bottom}px`;
+    menu.style.left = `${Math.min(buttonRect.left, window.innerWidth - menu.offsetWidth - 4)}px`;
+    newTabAgentMenu = menu;
+    newTabMenuButton.classList.add('active');
+    newTabMenuButton.setAttribute('aria-expanded', 'true');
+    menu.querySelector<HTMLButtonElement>('.new-tab-agent-option')?.focus();
+  };
+
+  newTabMenuButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (newTabAgentMenu) closeNewTabAgentMenu();
+    else openNewTabAgentMenu();
+  });
+  document.addEventListener('mousedown', (event) => {
+    const target = event.target as Node;
+    if (newTabAgentMenu && !newTabAgentMenu.contains(target) && !newTabMenuButton.contains(target)) {
+      closeNewTabAgentMenu();
+    }
+  });
+
   // Track recently closed tabs (loaded from persisted state)
   const recentlyClosed: RecentlyClosedTab[] = [...(state.recentlyClosed || [])];
   const MAX_RECENT = 10;
@@ -192,6 +276,7 @@ async function init(): Promise<void> {
   const saveRecent = () => window.codeherd.saveRecentlyClosed(recentlyClosed);
 
   tabManager.setOnTabClose((tab) => {
+    colorPicker.close(false);
     recentlyClosed.unshift({
       agent: tab.agent,
       folder: tab.launchFolder,
@@ -284,6 +369,7 @@ async function init(): Promise<void> {
 
   // When switching tabs, update sidebar and status bar
   tabManager.setOnTabSwitch((tab) => {
+    colorPicker.close(false);
     sidebar.loadSessionsForFolder(tab.launchFolder, tab.agent);
     statusBar.update(tab.launchFolder, tab.id, toStatusMeta(tab));
   });
@@ -310,6 +396,11 @@ async function init(): Promise<void> {
     tabManager.updateSession(msg);
   });
 
+  window.codeherd.onTabColorPicker((msg) => {
+    const tab = tabManager.getAllTabs().find(candidate => candidate.id === msg.tabId);
+    if (tab) colorPicker.open(msg.tabId, msg.color);
+  });
+
   window.codeherd.onUpdateAvailable((info) => {
     showUpdateBanner(info);
   });
@@ -317,7 +408,8 @@ async function init(): Promise<void> {
   if (!availableAgents.claude && !availableAgents.codex) showNoAgentsWarning();
 
   // New tab button
-  document.getElementById('new-tab-btn')!.addEventListener('click', () => {
+  newTabButton.addEventListener('click', () => {
+    closeNewTabAgentMenu();
     tabManager.openNewTab();
   });
 
@@ -375,6 +467,7 @@ async function init(): Promise<void> {
     tabManager.setWarnBeforeClose(newPrefs.warnBeforeClosingTabs);
     tabManager.setTabSwitchMode(newPrefs.tabSwitchMode ?? 'mru');
     tabManager.setDefaultAgent(newPrefs.defaultAgent ?? 'claude');
+    closeNewTabAgentMenu();
     applyNewTabShortcut(newPrefs.newTabShortcut);
   });
 
