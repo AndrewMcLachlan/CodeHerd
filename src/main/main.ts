@@ -8,6 +8,7 @@ import { buildAppMenu } from './menu';
 import { detectAvailableAgents } from './agent-detection';
 import { checkForUpdate } from './update-checker';
 import { IPC } from '../shared/ipc-channels';
+import { STATE_DIR } from '../shared/constants';
 import type { ThemePreference, ResolvedTheme } from '../shared/types';
 
 // In dev mode, use a separate user data directory so we can run alongside the installed app
@@ -15,9 +16,15 @@ if (!app.isPackaged) {
   app.setPath('userData', path.join(app.getPath('userData'), '-dev'));
 }
 
+// Dev runs use ~/.codeherd-dev so they never touch the installed app's settings
+// (parallel to the userData split above). Pass --live-state (npm run dev:live) to
+// point a dev run at the real ~/.codeherd instead — useful for reproducing a bug against
+// your actual tabs. Quit the installed app first: both write state.json, last one wins.
+const useLiveState = app.isPackaged || process.argv.includes('--live-state');
+
 let mainWindow: BrowserWindow | null = null;
 const ptyManager = new PtyManager();
-const stateManager = new StateManager();
+const stateManager = new StateManager(useLiveState ? STATE_DIR : `${STATE_DIR}-dev`);
 
 function resolveTheme(pref: ThemePreference): ResolvedTheme {
   if (pref === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
