@@ -41,7 +41,12 @@ export class SessionMetadataWatcher {
   private cachedDefaultLimit: number | null = null;
   private cachedDefaultLimitAt = 0;
 
-  constructor(private onChange: (msg: TabMetadataMessage) => void) {}
+  /** Path parameters exist for tests; production callers use the defaults. */
+  constructor(
+    private onChange: (msg: TabMetadataMessage) => void,
+    private projectsDir: string = CLAUDE_PROJECTS_DIR,
+    private claudeDir: string = CLAUDE_DIR,
+  ) {}
 
   /**
    * The context window to measure fill against for a session on the user's default model. The
@@ -57,7 +62,7 @@ export class SessionMetadataWatcher {
     }
     let limit = STANDARD_CONTEXT_LIMIT;
     try {
-      const settings = JSON.parse(fs.readFileSync(path.join(CLAUDE_DIR, 'settings.json'), 'utf-8'));
+      const settings = JSON.parse(fs.readFileSync(path.join(this.claudeDir, 'settings.json'), 'utf-8'));
       if (typeof settings?.model === 'string' && settings.model.includes('[1m]')) {
         limit = LARGE_CONTEXT_LIMIT;
       }
@@ -72,7 +77,7 @@ export class SessionMetadataWatcher {
   start(): void {
     if (this.rootWatcher) return;
     try {
-      fs.mkdirSync(CLAUDE_PROJECTS_DIR, { recursive: true });
+      fs.mkdirSync(this.projectsDir, { recursive: true });
     } catch {
       // best-effort
     }
@@ -80,9 +85,9 @@ export class SessionMetadataWatcher {
     // Watch every existing project subdirectory now, and the projects dir itself so we pick up
     // newly-created project folders.
     try {
-      for (const entry of fs.readdirSync(CLAUDE_PROJECTS_DIR, { withFileTypes: true })) {
+      for (const entry of fs.readdirSync(this.projectsDir, { withFileTypes: true })) {
         if (entry.isDirectory()) {
-          this.watchProjectDir(path.join(CLAUDE_PROJECTS_DIR, entry.name));
+          this.watchProjectDir(path.join(this.projectsDir, entry.name));
         }
       }
     } catch {
@@ -90,9 +95,9 @@ export class SessionMetadataWatcher {
     }
 
     try {
-      this.rootWatcher = fs.watch(CLAUDE_PROJECTS_DIR, (_event, filename) => {
+      this.rootWatcher = fs.watch(this.projectsDir, (_event, filename) => {
         if (!filename) return;
-        const dir = path.join(CLAUDE_PROJECTS_DIR, filename.toString());
+        const dir = path.join(this.projectsDir, filename.toString());
         try {
           if (fs.statSync(dir).isDirectory()) this.watchProjectDir(dir);
         } catch {
@@ -153,9 +158,9 @@ export class SessionMetadataWatcher {
 
   private findTranscript(sessionId: SessionId): string | null {
     try {
-      for (const entry of fs.readdirSync(CLAUDE_PROJECTS_DIR, { withFileTypes: true })) {
+      for (const entry of fs.readdirSync(this.projectsDir, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
-        const candidate = path.join(CLAUDE_PROJECTS_DIR, entry.name, `${sessionId}.jsonl`);
+        const candidate = path.join(this.projectsDir, entry.name, `${sessionId}.jsonl`);
         if (fs.existsSync(candidate)) return candidate;
       }
     } catch {

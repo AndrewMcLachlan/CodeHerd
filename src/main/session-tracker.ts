@@ -24,7 +24,12 @@ interface SessionAccumulator {
 export class SessionTracker {
   private codex = new CodexSessionTracker();
 
-  constructor(private agents: AgentRegistry) {}
+  /** Path parameters exist for tests; production callers use the defaults. */
+  constructor(
+    private agents: AgentRegistry,
+    private historyFile: string = CLAUDE_HISTORY_FILE,
+    private projectsDir: string = CLAUDE_PROJECTS_DIR,
+  ) {}
 
   async getSessionsForFolder(folder: FolderPath, agent: AgentType): Promise<AgentSession[]> {
     if (agent === 'codex') return this.codex.getSessionsForFolder(folder);
@@ -48,13 +53,13 @@ export class SessionTracker {
   }
 
   private async getClaudeSessionsForFolder(folder: FolderPath): Promise<AgentSession[]> {
-    if (!fs.existsSync(CLAUDE_HISTORY_FILE)) {
+    if (!fs.existsSync(this.historyFile)) {
       return [];
     }
 
     const accumulators = new Map<string, SessionAccumulator>();
 
-    const stream = fs.createReadStream(CLAUDE_HISTORY_FILE, { encoding: 'utf-8' });
+    const stream = fs.createReadStream(this.historyFile, { encoding: 'utf-8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
     for await (const line of rl) {
@@ -100,7 +105,7 @@ export class SessionTracker {
     const sessions: AgentSession[] = [];
     for (const [sessionId, acc] of accumulators) {
       const transcript = path.join(
-        CLAUDE_PROJECTS_DIR,
+        this.projectsDir,
         acc.rawProject.replace(/[^a-zA-Z0-9]/g, '-'),
         `${sessionId}.jsonl`,
       );
@@ -128,7 +133,7 @@ export class SessionTracker {
    */
   async canResume(folder: FolderPath, sessionId: SessionId): Promise<boolean> {
     const transcript = path.join(
-      CLAUDE_PROJECTS_DIR,
+      this.projectsDir,
       folder.replace(/[^a-zA-Z0-9]/g, '-'),
       `${sessionId}.jsonl`,
     );
