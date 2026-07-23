@@ -4,10 +4,19 @@ type Status = TabState['status'];
 
 /**
  * Detects whether Claude Code is showing an approval/decision prompt.
- * Currently matches the "Esc to cancel" footer styled in grey (RGB 153,153,153).
+ *
+ * The prompt footer ends in "Esc to cancel", styled grey (RGB 153,153,153). Newer Claude
+ * Code versions place hint text ("Enter to select · ↑/↓ to navigate · ", "Enter to
+ * confirm · ", ...) and minor style/cursor sequences between the colour code and the
+ * phrase, so allow a short gap — but reject any colour change or reset inside it, which
+ * is what separates the real footer from conversation text that merely mentions
+ * "Esc to cancel".
  */
+const ATTENTION_FOOTER =
+  /\x1b\[38;2;153;153;153m(?:(?!\x1b\[(?:38;|48;|39m|3[0-7]m|9[0-7]m|0?m))[\s\S]){0,150}?Esc to cancel/;
+
 export function detectAttention(data: string): boolean {
-  return data.includes('\x1b[38;2;153;153;153mEsc to cancel');
+  return ATTENTION_FOOTER.test(data);
 }
 
 /**
