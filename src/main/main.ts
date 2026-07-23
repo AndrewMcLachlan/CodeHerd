@@ -10,7 +10,14 @@ import { checkForUpdate } from './update-checker';
 import { cleanPtyDebugLogs, isPtyDebugEnabled } from './diagnostics';
 import { IPC } from '../shared/ipc-channels';
 import { STATE_DIR } from '../shared/constants';
+import { handleSquirrelEvent } from './squirrel-startup';
 import type { ThemePreference, ResolvedTheme } from '../shared/types';
+
+// The Squirrel installer relaunches the exe with --squirrel-* flags during
+// install/update/uninstall; do the shortcut work and exit before any window.
+if (handleSquirrelEvent()) {
+  app.quit();
+}
 
 // In dev mode, use a separate user data directory so we can run alongside the installed app
 if (!app.isPackaged) {

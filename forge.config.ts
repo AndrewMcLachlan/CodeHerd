@@ -8,6 +8,18 @@ const makers: MakerBase<unknown>[] = [
 
 // Only load platform-specific makers if available (installed in CI per-platform)
 try {
+  const { MakerSquirrel } = require('@electron-forge/maker-squirrel');
+  const { version } = require('./package.json');
+  makers.push(new MakerSquirrel({
+    name: 'codeherd',
+    // Same name-platform-arch-version scheme as every other artifact.
+    setupExe: `CodeHerd-win32-x64-${version}-Setup.exe`,
+    setupIcon: path.resolve(__dirname, 'assets', 'icon.ico'),
+    noMsi: true,
+  }));
+} catch {}
+
+try {
   const { MakerDMG } = require('@electron-forge/maker-dmg');
   const { version } = require('./package.json');
   makers.push(new MakerDMG({
