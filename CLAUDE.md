@@ -28,3 +28,5 @@
 - `npm run build` - compile TypeScript via esbuild
 - `npm start` - build and run
 - `npm run make` - create distributable
+- `npm run typecheck` - tsc --noEmit (required in CI)
+- `npm test` - run vitest suite (required in CI); tests live beside source as *.test.ts
