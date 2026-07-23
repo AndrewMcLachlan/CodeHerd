@@ -17,6 +17,7 @@ import { detectCodexAttention, detectStatus } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
 import { CodexCommandTracker } from './codex-command-tracker';
 import { normalizeTabColor } from '../shared/tab-colors';
+import { isPtyDebugEnabled } from './diagnostics';
 
 function resolveTheme(pref: ThemePreference): ResolvedTheme {
   if (pref === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
@@ -312,17 +313,22 @@ export function registerIpcHandlers(
       rows: request.rows,
     });
 
-    const logPath = path.join(app.getPath('userData'), `pty-debug-${tabId}.log`);
-    const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+    // Raw PTY logging is opt-in (CODEHERD_PTY_DEBUG=1 / --pty-debug): it records
+    // full terminal output, which can include prompts and secrets.
+    const logStream = isPtyDebugEnabled()
+      ? fs.createWriteStream(path.join(app.getPath('userData'), `pty-debug-${tabId}.log`), { flags: 'a' })
+      : null;
 
     ptyManager.onData(tabId, (data) => {
-      // Log raw data with control codes visible
-      const escaped = data.replace(/[\x00-\x1f\x7f]/g, (ch) => {
-        const code = ch.charCodeAt(0);
-        const names: Record<number, string> = { 3: 'ETX', 4: 'EOT', 7: 'BEL', 8: 'BS', 9: 'TAB', 10: 'LF', 13: 'CR', 27: 'ESC' };
-        return `<${names[code] ?? `0x${code.toString(16).padStart(2, '0')}`}>`;
-      });
-      logStream.write(`[${new Date().toISOString()}] ${escaped}\n`);
+      if (logStream) {
+        // Log raw data with control codes visible
+        const escaped = data.replace(/[\x00-\x1f\x7f]/g, (ch) => {
+          const code = ch.charCodeAt(0);
+          const names: Record<number, string> = { 3: 'ETX', 4: 'EOT', 7: 'BEL', 8: 'BS', 9: 'TAB', 10: 'LF', 13: 'CR', 27: 'ESC' };
+          return `<${names[code] ?? `0x${code.toString(16).padStart(2, '0')}`}>`;
+        });
+        logStream.write(`[${new Date().toISOString()}] ${escaped}\n`);
+      }
 
       const currentTab = tabs.get(tabId);
       if (currentTab?.agent === 'claude' && currentTab.status !== 'stopped') {
@@ -666,6 +672,10 @@ export function registerIpcHandlers(
     switch (action) {
       case 'quit':
         app.quit();
+        break;
+      case 'openDiagnostics':
+        // Where state.json, its backups, and any opt-in debug logs live.
+        void shell.openPath(app.getPath('userData'));
         break;
       case 'about': {
         if (aboutWin && !aboutWin.isDestroyed()) {
