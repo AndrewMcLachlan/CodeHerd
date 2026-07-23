@@ -13,7 +13,8 @@ Artifact names are stable and self-describing:
 
 | Platform | Artifact |
 |---|---|
-| Windows x64 | `CodeHerd-win32-x64-<version>.zip` |
+| Windows x64 (installer) | `CodeHerd-win32-x64-<version>-Setup.exe` |
+| Windows x64 (portable) | `CodeHerd-win32-x64-<version>.zip` |
 | macOS Apple Silicon | `CodeHerd-darwin-arm64-<version>.dmg` (or `.zip`) |
 | Linux x64 (Debian/Ubuntu) | `codeherd_<version>_amd64.deb` |
 | Linux x64 (portable) | `CodeHerd-linux-x64-<version>.zip` |
@@ -36,16 +37,29 @@ gh attestation verify CodeHerd-win32-x64-<version>.zip --repo AndrewMcLachlan/Co
 
 ## Windows
 
-1. Download and extract the ZIP to a folder of your choice (e.g.
-   `C:\Tools\CodeHerd`), then run `codeherd.exe`.
-2. **SmartScreen**: the first run of an unsigned app shows
+### Installer (recommended)
+
+1. Run `CodeHerd-win32-x64-<version>-Setup.exe`. It installs per-user into
+   `%LocalAppData%\codeherd` — no admin rights, no install wizard, and it
+   launches when done.
+2. A **Start Menu** entry is created. No desktop shortcut is ever added; make
+   one yourself from the Start Menu entry if you want it.
+3. **SmartScreen**: the first run of an unsigned installer shows
    *"Windows protected your PC"*. Click **More info → Run anyway**.
-   If the ZIP itself is blocked, right-click it → Properties → tick
-   **Unblock** before extracting.
-3. **Upgrade**: extract the new ZIP over the old folder (or to a new one and
+4. **Upgrade**: run the newer Setup.exe — it upgrades in place.
+5. **Uninstall**: Settings → Apps (Add/Remove Programs) → CodeHerd. To remove
+   all data as well, delete `%USERPROFILE%\.codeherd` and `%APPDATA%\CodeHerd`.
+
+### Portable ZIP
+
+1. Download and extract the ZIP to a folder of your choice (e.g.
+   `C:\Tools\CodeHerd`), then run `codeherd.exe`. If the ZIP is blocked,
+   right-click it → Properties → tick **Unblock** before extracting.
+   SmartScreen behaves as above.
+2. **Upgrade**: extract the new ZIP over the old folder (or to a new one and
    delete the old). Your settings are stored outside the install folder, so
    they survive.
-4. **Uninstall**: delete the folder. To remove all data as well, delete
+3. **Uninstall**: delete the folder. To remove all data as well, delete
    `%USERPROFILE%\.codeherd` and `%APPDATA%\CodeHerd`.
 
 ## macOS
