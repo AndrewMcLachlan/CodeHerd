@@ -46,7 +46,7 @@ app.on('second-instance', () => {
 
 // Set dock icon in dev mode on macOS (packaged apps use the bundled .icns)
 if (process.platform === 'darwin' && !app.isPackaged) {
-  app.dock.setIcon(path.join(__dirname, '..', 'assets', 'icon-mac.png'));
+  app.dock?.setIcon(path.join(__dirname, '..', 'assets', 'icon-mac.png'));
 }
 
 function createWindow(): void {
