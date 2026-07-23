@@ -61,12 +61,59 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
 
     steps:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
+
+      # Fail the release before publishing if any expected platform artifact is
+      # missing — a maker silently not running must not produce a partial release.
+      - name: Verify expected artifacts
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          ls -R artifacts
+          check() {
+            local matches=(artifacts/**/$1)
+            if [ ${#matches[@]} -eq 0 ]; then
+              echo "::error::Missing expected release artifact: $1"
+              exit 1
+            fi
+          }
+          check "CodeHerd-win32-x64-*.zip"
+          check "CodeHerd-darwin-*-*.zip"
+          check "CodeHerd-linux-x64-*.zip"
+          check "CodeHerd-darwin-*-*.dmg"
+          check "codeherd_*_amd64.deb"
+
+      # Checksums let users of unsigned builds verify their download; the file
+      # lists bare filenames so `sha256sum -c` works in the download directory.
+      - name: Generate SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd artifacts
+          find . -type f \( -name '*.zip' -o -name '*.dmg' -o -name '*.deb' \) -print0 |
+            while IFS= read -r -d '' f; do
+              (cd "$(dirname "$f")" && sha256sum "$(basename "$f")")
+            done | sort -k2 > SHA256SUMS
+          cat SHA256SUMS
+
+      # Publish signed build-provenance attestations (verifiable with
+      # `gh attestation verify <file> --repo AndrewMcLachlan/CodeHerd`) —
+      # the affordable integrity story for unsigned binaries.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            artifacts/**/*.zip
+            artifacts/**/*.dmg
+            artifacts/**/*.deb
 
       - name: Create release
         uses: softprops/action-gh-release@v3
