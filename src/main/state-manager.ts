@@ -1,62 +1,103 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { app } from 'electron';
-import { STATE_DIR, DEFAULT_APP_STATE, DEFAULT_PREFERENCES } from '../shared/constants';
+import { DEFAULT_APP_STATE, DEFAULT_PREFERENCES } from '../shared/constants';
 import type { AppState, TabState, TabId, SessionId, RecentlyClosedTab, Preferences } from '../shared/types';
-
-// Dev runs use ~/.codeherd-dev so they never touch the installed app's settings
-// (parallel to the userData split in main.ts). Pass --live-state (npm run dev:live) to
-// point a dev run at the real ~/.codeherd instead — useful for reproducing a bug against
-// your actual tabs. Quit the installed app first: both write state.json, last one wins.
-const useLiveState = app.isPackaged || process.argv.includes('--live-state');
-const stateDir = useLiveState ? STATE_DIR : `${STATE_DIR}-dev`;
-const stateFile = path.join(stateDir, 'state.json');
 
 export class StateManager {
   private state: AppState;
+  private readonly stateFile: string;
+  private readonly backupFile: string;
 
-  constructor() {
+  /** The caller picks the directory (see main.ts for the live/dev split). */
+  constructor(private readonly stateDir: string) {
+    this.stateFile = path.join(stateDir, 'state.json');
+    this.backupFile = this.stateFile + '.bak';
     this.state = this.load();
   }
 
   private load(): AppState {
     try {
-      fs.mkdirSync(stateDir, { recursive: true });
-      if (fs.existsSync(stateFile)) {
-        const raw = fs.readFileSync(stateFile, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (parsed.version === 1) {
-          // Merge in defaults for any fields added after the state file was created
-          return {
-            ...DEFAULT_APP_STATE,
-            ...parsed,
-            // Tabs saved before multi-agent support are all Claude Code tabs.
-            tabs: (parsed.tabs ?? []).map((tab: TabState) => ({
-              ...tab,
-              agent: tab.agent ?? 'claude',
-            })),
-            recentlyClosed: (parsed.recentlyClosed ?? []).map((tab: RecentlyClosedTab) => ({
-              ...tab,
-              agent: tab.agent ?? 'claude',
-            })),
-            preferences: { ...DEFAULT_PREFERENCES, ...parsed.preferences },
-          };
-        }
+      fs.mkdirSync(this.stateDir, { recursive: true });
+    } catch {
+      // best-effort; reads below will fall back to defaults
+    }
+
+    const primary = this.tryRead(this.stateFile);
+    if (primary) return primary;
+
+    // The state file is missing, corrupt, or an unknown version. Keep a copy for
+    // diagnostics, then fall back to the last-known-good backup before giving up
+    // and resetting to defaults.
+    this.preserveCorrupt();
+    const backup = this.tryRead(this.backupFile);
+    if (backup) {
+      console.warn('state.json missing or unreadable; recovered from last-known-good backup');
+      return backup;
+    }
+    return structuredClone(DEFAULT_APP_STATE);
+  }
+
+  /** Read and migrate a state file, or null if it's missing, corrupt, or an unknown version. */
+  private tryRead(file: string): AppState | null {
+    try {
+      if (!fs.existsSync(file)) return null;
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      if (parsed.version !== 1) return null;
+      // Merge in defaults for any fields added after the state file was created.
+      // Deep-clone the defaults so later in-place mutation (e.g. codexSessionColors)
+      // can never write through to the shared DEFAULT_APP_STATE object.
+      return {
+        ...structuredClone(DEFAULT_APP_STATE),
+        ...parsed,
+        // Tabs saved before multi-agent support are all Claude Code tabs.
+        tabs: (parsed.tabs ?? []).map((tab: TabState) => ({
+          ...tab,
+          agent: tab.agent ?? 'claude',
+        })),
+        recentlyClosed: (parsed.recentlyClosed ?? []).map((tab: RecentlyClosedTab) => ({
+          ...tab,
+          agent: tab.agent ?? 'claude',
+        })),
+        preferences: { ...DEFAULT_PREFERENCES, ...parsed.preferences },
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private preserveCorrupt(): void {
+    try {
+      if (fs.existsSync(this.stateFile)) {
+        fs.copyFileSync(this.stateFile, this.stateFile + '.corrupt');
       }
     } catch {
-      // Corrupt or missing file, use defaults
+      // best-effort
     }
-    return { ...DEFAULT_APP_STATE };
   }
 
   save(): void {
     try {
-      fs.mkdirSync(stateDir, { recursive: true });
-      const tmpFile = stateFile + '.tmp';
+      fs.mkdirSync(this.stateDir, { recursive: true });
+      this.backUpCurrentIfValid();
+      // Write-then-rename so an interrupted write never truncates state.json itself.
+      const tmpFile = this.stateFile + '.tmp';
       fs.writeFileSync(tmpFile, JSON.stringify(this.state, null, 2), 'utf-8');
-      fs.renameSync(tmpFile, stateFile);
+      fs.renameSync(tmpFile, this.stateFile);
     } catch (err) {
       console.error('Failed to save state:', err);
+    }
+  }
+
+  /**
+   * Keep the outgoing state file as the last-known-good backup — but only if it
+   * actually parses, so a corrupt file never replaces an older good backup.
+   */
+  private backUpCurrentIfValid(): void {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(this.stateFile, 'utf-8'));
+      if (parsed.version === 1) fs.copyFileSync(this.stateFile, this.backupFile);
+    } catch {
+      // missing or corrupt — leave any existing backup in place
     }
   }
 
