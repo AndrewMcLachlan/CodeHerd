@@ -346,6 +346,7 @@ async function init(): Promise<void> {
       { separator: true },
       { label: 'Preferences', shortcut: `${mod},`, action: () => window.codeherd.menuAction('preferences') },
       { label: 'About CodeHerd', action: () => window.codeherd.menuAction('about') },
+      { label: 'Open Diagnostics Folder', action: () => window.codeherd.menuAction('openDiagnostics') },
       { separator: true },
       { label: 'Exit', shortcut: 'Alt+F4', action: () => window.codeherd.menuAction('quit') },
     );

@@ -7,6 +7,7 @@ import { registerIpcHandlers } from './ipc-handlers';
 import { buildAppMenu } from './menu';
 import { detectAvailableAgents } from './agent-detection';
 import { checkForUpdate } from './update-checker';
+import { cleanPtyDebugLogs, isPtyDebugEnabled } from './diagnostics';
 import { IPC } from '../shared/ipc-channels';
 import { STATE_DIR } from '../shared/constants';
 import { handleSquirrelEvent } from './squirrel-startup';
@@ -174,6 +175,12 @@ let isQuitting = false;
 const isStylingMode = process.argv.includes('--styling');
 
 app.whenReady().then(() => {
+  // Older releases wrote raw PTY logs unconditionally; reclaim the space unless
+  // the user is actively debugging this run.
+  if (!isPtyDebugEnabled()) {
+    cleanPtyDebugLogs(app.getPath('userData'));
+  }
+
   const initialState = stateManager.getState();
   const availableAgents = detectAvailableAgents();
   // Kept up to date by rebuildMenu so a preferences-triggered rebuild
