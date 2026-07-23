@@ -1,6 +1,6 @@
 {
   "name": "codeherd",
-  "version": "1.0.0-beta",
+  "version": "1.0.0-beta1",
   "description": "Manage Claude Code and Codex CLI sessions in persistent tabs",
   "author": "Andrew McLachlan",
   "license": "MIT",
