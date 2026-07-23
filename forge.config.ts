@@ -9,7 +9,13 @@ const makers: MakerBase<unknown>[] = [
 // Only load platform-specific makers if available (installed in CI per-platform)
 try {
   const { MakerDMG } = require('@electron-forge/maker-dmg');
-  makers.push(new MakerDMG({}));
+  const { version } = require('./package.json');
+  makers.push(new MakerDMG({
+    // Match the zip naming scheme (name-platform-arch-version) so every release
+    // asset is stable and self-describing; title keeps the mounted volume pretty.
+    name: `CodeHerd-darwin-${process.arch}-${version}`,
+    title: 'CodeHerd',
+  }));
 } catch {}
 
 try {
