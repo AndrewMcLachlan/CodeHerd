@@ -1,4 +1,4 @@
-import { Menu, BrowserWindow, app } from 'electron';
+import { Menu, BrowserWindow, app, shell } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 import type { AgentAvailability, AgentType, NewTabShortcut, RecentlyClosedTab } from '../shared/types';
 import { getNewTabMenuOptions } from '../shared/agents';
@@ -111,6 +111,14 @@ export function buildAppMenu(
           label: 'About CodeHerd',
           click: () => {
             getMainWindow()?.webContents.send('menu:about');
+          },
+        },
+        {
+          // Where state.json, its backups, and any opt-in debug logs live —
+          // the folder to zip up when reporting a problem.
+          label: 'Open Diagnostics Folder',
+          click: () => {
+            void shell.openPath(app.getPath('userData'));
           },
         },
       ],
