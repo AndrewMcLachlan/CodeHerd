@@ -1,9 +1,8 @@
-import * as path from 'path';
 import { describe, expect, it, vi } from 'vitest';
 import { handleSquirrelEvent, type SquirrelSpawn } from './squirrel-startup';
 
 const EXE = 'C:\\Users\\u\\AppData\\Local\\codeherd\\app-1.0.0\\codeherd.exe';
-const UPDATE = path.resolve('C:\\Users\\u\\AppData\\Local\\codeherd', 'Update.exe');
+const UPDATE = 'C:\\Users\\u\\AppData\\Local\\codeherd\\Update.exe';
 
 const run = (argv: string[], platform: NodeJS.Platform = 'win32') => {
   const spawnFn = vi.fn<SquirrelSpawn>();

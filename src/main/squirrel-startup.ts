@@ -28,9 +28,11 @@ export function handleSquirrelEvent(
 ): boolean {
   if (platform !== 'win32' || argv.length <= 1) return false;
 
-  // Installed layout: %LocalAppData%\codeherd\Update.exe above app-<version>\codeherd.exe
-  const updateExe = path.resolve(path.dirname(execPath), '..', 'Update.exe');
-  const exeName = path.basename(execPath);
+  // Installed layout: %LocalAppData%\codeherd\Update.exe above app-<version>\codeherd.exe.
+  // Explicit win32 path semantics: these are always Windows paths, and the generic
+  // `path` would misparse the backslashes when the tests run on macOS/Linux.
+  const updateExe = path.win32.resolve(path.win32.dirname(execPath), '..', 'Update.exe');
+  const exeName = path.win32.basename(execPath);
 
   switch (argv[1]) {
     case '--squirrel-install':
