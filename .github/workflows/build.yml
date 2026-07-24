@@ -129,3 +129,7 @@ jobs:
         with:
           files: artifacts/**/*
           generate_release_notes: true
+          # Any hyphenated tag (v1.0.0-beta1, v1.0.0-rc1) is a prerelease, so it
+          # stays out of /releases/latest — stable users are never notified about
+          # betas, and prerelease builds still find it via the release list (#106).
+          prerelease: ${{ contains(github.ref_name, '-') }}
