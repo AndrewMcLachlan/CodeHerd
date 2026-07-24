@@ -12,6 +12,11 @@ try {
   const { version } = require('./package.json');
   makers.push(new MakerSquirrel({
     name: 'codeherd',
+    // Squirrel files the Start Menu shortcut under Programs\<authors>\, which
+    // otherwise defaults to package.json's author (a personal name). Override
+    // just the nuspec authors so the folder is "CodeHerd" — package.json's
+    // author still drives the deb maintainer, About dialog, and copyright.
+    authors: 'CodeHerd',
     // Same name-platform-arch-version scheme as every other artifact.
     setupExe: `CodeHerd-win32-x64-${version}-Setup.exe`,
     setupIcon: path.resolve(__dirname, 'assets', 'icon.ico'),
