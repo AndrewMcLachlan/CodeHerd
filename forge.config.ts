@@ -60,6 +60,12 @@ const config: ForgeConfig = {
     executableName: 'codeherd',
     icon: path.resolve(__dirname, 'assets', process.platform === 'darwin' ? 'icon-mac' : 'icon'),
     appBundleId: 'com.andrewmclachlan.codeherd',
+    // Squirrel files the Start Menu shortcut under Programs\<exe CompanyName>\,
+    // which defaults to package.json's author (a personal name). Stamp the exe's
+    // CompanyName resource with the product name so the folder is "CodeHerd".
+    win32metadata: {
+      CompanyName: 'CodeHerd',
+    },
     darwinDarkModeSupport: true,
     extendInfo: {
       CFBundleDisplayName: 'CodeHerd',
