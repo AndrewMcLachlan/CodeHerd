@@ -15,6 +15,10 @@ try {
     // Same name-platform-arch-version scheme as every other artifact.
     setupExe: `CodeHerd-win32-x64-${version}-Setup.exe`,
     setupIcon: path.resolve(__dirname, 'assets', 'icon.ico'),
+    // Drives the app.ico that the Add/Remove Programs entry (DisplayIcon) uses.
+    // Without it electron-winstaller defaults to Electron's own icon; point it at
+    // our committed icon so the installed app is branded, not a generic Electron atom.
+    iconUrl: 'https://raw.githubusercontent.com/AndrewMcLachlan/CodeHerd/main/assets/icon.ico',
     noMsi: true,
   }));
 } catch {}
