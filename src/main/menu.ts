@@ -77,9 +77,18 @@ export function buildAppMenu(
     {
       label: 'Edit',
       submenu: [
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' },
+        // On Windows/Linux these roles must NOT register their accelerators. The
+        // terminal owns Ctrl+C/V/A: Ctrl+C copies the xterm selection (or falls
+        // through as SIGINT when there is none), Ctrl+V runs the bracketed-paste
+        // path, and Ctrl+A is readline's beginning-of-line. A registered role fires
+        // natively — outside the page, so preventDefault cannot stop it — and acts on
+        // the focused element's DOM selection, which is empty because xterm paints its
+        // own. That clobbered the clipboard write and made copy fail intermittently
+        // (#59). The items stay clickable and still display their shortcut.
+        // macOS keeps them registered: Cmd+C/V/A never collide with the control keys.
+        { role: 'copy', registerAccelerator: isMac },
+        { role: 'paste', registerAccelerator: isMac },
+        { role: 'selectAll', registerAccelerator: isMac },
       ],
     },
     {

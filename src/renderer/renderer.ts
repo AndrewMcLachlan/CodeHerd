@@ -32,7 +32,7 @@ declare global {
       getAvailableAgents: () => Promise<AgentAvailability>;
       pickFolder: () => Promise<string | null>;
       getState: () => Promise<AppState>;
-      clipboardWrite: (text: string) => Promise<void>;
+      clipboardWrite: (text: string) => Promise<boolean>;
       clipboardRead: () => Promise<string>;
       clipboardHasImage: () => Promise<boolean>;
       getGitInfo: (folder: string) => Promise<GitInfo>;

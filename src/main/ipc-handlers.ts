@@ -17,7 +17,8 @@ import { detectCodexAttention, detectStatus } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
 import { CodexCommandTracker } from './codex-command-tracker';
 import { normalizeTabColor } from '../shared/tab-colors';
-import { isPtyDebugEnabled } from './diagnostics';
+import { isPtyDebugEnabled, getDiagnostics, escapeControl } from './diagnostics';
+import { normalizeFolder, selectTabForHistoryRollforward } from './history-attribution';
 
 function resolveTheme(pref: ThemePreference): ResolvedTheme {
   if (pref === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
@@ -88,30 +89,15 @@ export function registerIpcHandlers(
   });
   metadataWatcher.start();
 
-  const normalizeFolder = (p: string): string => p
-    .replace(/^\\\\\?\\/, '')
-    .replace(/\\/g, '/')
-    .replace(/\/+$/, '')
-    .toLowerCase();
-
   // A tab's sessionId is captured once, at spawn. But Claude rolls it forward mid-tab
   // (notably `/clear`, which starts a new conversation under a new id), and nothing
   // else tells us. Without this, restart resumes the stale session. history.jsonl gets
   // one entry per submitted prompt tagged with the *current* session id for its folder,
-  // so we use it to keep the owning tab in sync.
+  // so we use it to keep the owning tab in sync. Attribution is best-effort and must not
+  // hijack a session another same-folder tab already owns (#109) — see the helper.
   const historyWatcher = new HistoryWatcher(async ({ project, sessionId }) => {
-    const target = normalizeFolder(project);
-    const candidates = Array.from(tabs.values()).filter(
-      t => t.agent === 'claude' && normalizeFolder(t.launchFolder) === target,
-    );
-    if (candidates.length === 0) return;
-
-    // With multiple tabs on the same folder, the prompt that produced this entry came
-    // from whichever the user is interacting with — prefer the active tab, else the
-    // most recently active one.
-    const tab = candidates.find(t => t.isActive)
-      ?? candidates.sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
-    if (!tab || tab.sessionId === sessionId) return;
+    const tab = selectTabForHistoryRollforward(Array.from(tabs.values()), project, sessionId);
+    if (!tab) return;
 
     // A background agent logs prompts against the same project folder as the tab it was
     // launched from, but it's a separate conversation the user drives elsewhere. Adopting
@@ -320,6 +306,7 @@ export function registerIpcHandlers(
       : null;
 
     ptyManager.onData(tabId, (data) => {
+      getDiagnostics()?.countOutput(data.length);
       if (logStream) {
         // Log raw data with control codes visible
         const escaped = data.replace(/[\x00-\x1f\x7f]/g, (ch) => {
@@ -447,6 +434,7 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle(IPC.TAB_INPUT, async (_event, { tabId, data }: { tabId: string; data: string }): Promise<void> => {
+    getDiagnostics()?.log('input', `tab=${tabId} ${escapeControl(data)}`);
     const tab = tabs.get(tabId);
     if (tab) {
       tab.lastActivityAt = Date.now();
@@ -489,6 +477,7 @@ export function registerIpcHandlers(
       }
     }
     ptyManager.write(tabId, data);
+    getDiagnostics()?.log('pty.write', `tab=${tabId}`);
   });
 
   ipcMain.handle(
@@ -534,16 +523,24 @@ export function registerIpcHandlers(
     return stateManager.getState();
   });
 
-  ipcMain.handle(IPC.CLIPBOARD_WRITE, async (_event, text: string): Promise<void> => {
+  ipcMain.handle(IPC.CLIPBOARD_WRITE, async (_event, text: string): Promise<boolean> => {
     // The Win32 clipboard is a global lock, and writes silently fail when a
     // clipboard listener (Windows clipboard history, Ditto, PowerToys, ...)
-    // happens to hold it. Verify the write landed and retry briefly (#59)
+    // happens to hold it. Verify the write landed and retry briefly (#59).
+    // Reports success so the caller can keep the selection alive on failure.
     for (let attempt = 0; attempt < 5; attempt++) {
       clipboard.writeText(text);
-      if (clipboard.readText() === text) return;
+      if (clipboard.readText() === text) {
+        getDiagnostics()?.log('clipboard.write', `ok len=${text.length} attempt=${attempt + 1}`);
+        return true;
+      }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+    // Absence of any clipboard.write line after a Ctrl+C is itself the signal: it
+    // means the renderer never got text out of the selection to send.
+    getDiagnostics()?.log('clipboard.write', `FAILED len=${text.length} after 5 attempts`);
     console.warn('clipboard write failed after retries');
+    return false;
   });
 
   ipcMain.handle(IPC.CLIPBOARD_READ, async (): Promise<string> => {

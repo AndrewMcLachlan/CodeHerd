@@ -7,7 +7,7 @@ import { registerIpcHandlers } from './ipc-handlers';
 import { buildAppMenu } from './menu';
 import { detectAvailableAgents } from './agent-detection';
 import { checkForUpdate } from './update-checker';
-import { cleanPtyDebugLogs, isPtyDebugEnabled } from './diagnostics';
+import { cleanPtyDebugLogs, isPtyDebugEnabled, startDiagnostics } from './diagnostics';
 import { IPC } from '../shared/ipc-channels';
 import { STATE_DIR } from '../shared/constants';
 import { handleSquirrelEvent } from './squirrel-startup';
@@ -18,6 +18,18 @@ import type { ThemePreference, ResolvedTheme } from '../shared/types';
 if (handleSquirrelEvent()) {
   app.quit();
 }
+
+// Keep the terminal responsive when CodeHerd is unfocused or covered by another
+// window. Chromium otherwise deprioritises the renderer of an occluded window and
+// throttles its timers/rAF (escalating to once-a-minute "intensive" throttling after
+// a few idle minutes), which made keystrokes on a numbered-option prompt drop for up
+// to ~30s while the window woke back up. These process-level switches stop Chromium
+// treating a covered window as hidden and stop it lowering the renderer's priority;
+// the per-window `backgroundThrottling: false` below disables the timer/rAF throttling.
+// Cost is only extra background CPU while an agent is actively streaming — negligible
+// when idle at a prompt (the case this fixes). Must be set before app 'ready'.
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
 // In dev mode, use a separate user data directory so we can run alongside the installed app
 if (!app.isPackaged) {
@@ -92,6 +104,9 @@ function createWindow(): void {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      // See the command-line switches at the top of this file: a terminal that drops
+      // keystrokes while backgrounded is a worse bug than a little extra idle CPU.
+      backgroundThrottling: false,
     },
   });
 
@@ -179,6 +194,10 @@ app.whenReady().then(() => {
   // the user is actively debugging this run.
   if (!isPtyDebugEnabled()) {
     cleanPtyDebugLogs(app.getPath('userData'));
+  } else {
+    // Correlate event-loop stalls, PTY output volume, and input arrival on one
+    // timeline in diagnostics-loop.log to diagnose input latency under load.
+    startDiagnostics(app.getPath('userData'));
   }
 
   const initialState = stateManager.getState();
