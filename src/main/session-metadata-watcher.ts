@@ -41,11 +41,15 @@ export class SessionMetadataWatcher {
   private cachedDefaultLimit: number | null = null;
   private cachedDefaultLimitAt = 0;
 
-  /** Path parameters exist for tests; production callers use the defaults. */
+  /**
+   * Path parameters exist for tests; production callers use the defaults.
+   * `onFullRead` reports whole-file re-reads (bytes, milliseconds) for diagnostics.
+   */
   constructor(
     private onChange: (msg: TabMetadataMessage) => void,
     private projectsDir: string = CLAUDE_PROJECTS_DIR,
     private claudeDir: string = CLAUDE_DIR,
+    private onFullRead?: (bytes: number, ms: number) => void,
   ) {}
 
   /**
@@ -196,6 +200,12 @@ export class SessionMetadataWatcher {
     if (size < start) start = 0;
     if (size === start) return;
 
+    // A full re-read (start === 0) parses the whole transcript synchronously on the
+    // main thread, so a large file stalls every tab in this window. Time it: a long
+    // stall logged here, with little PTY output around it, means a blocking read
+    // rather than output saturation.
+    const readStartedAt = start === 0 ? Date.now() : 0;
+
     let chunk: string;
     try {
       const fd = fs.openSync(file, 'r');
@@ -281,6 +291,10 @@ export class SessionMetadataWatcher {
           break;
         }
       }
+    }
+
+    if (readStartedAt) {
+      this.onFullRead?.(size, Date.now() - readStartedAt);
     }
 
     this.lastSeen.set(sessionId, { name, color, model, contextTokens, contextLimit, effort });

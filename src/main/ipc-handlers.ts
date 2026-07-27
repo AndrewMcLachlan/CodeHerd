@@ -86,6 +86,8 @@ export function registerIpcHandlers(
     if (msg.effort !== undefined && tab.effort !== msg.effort) { tab.effort = msg.effort; changed = true; }
     if (durable) saveTabState();
     if (changed) safeSend(IPC.TAB_METADATA, msg);
+  }, undefined, undefined, (bytes, ms) => {
+    getDiagnostics()?.log('transcript.fullread', `${bytes} bytes in ${ms}ms`);
   });
   metadataWatcher.start();
 
