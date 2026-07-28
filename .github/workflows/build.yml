@@ -116,7 +116,7 @@ jobs:
       # `gh attestation verify <file> --repo AndrewMcLachlan/CodeHerd`) —
       # the affordable integrity story for unsigned binaries.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             artifacts/**/*.zip
