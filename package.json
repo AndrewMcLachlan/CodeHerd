@@ -20,6 +20,7 @@
     "dev": "npm run build && electron .",
     "dev:styling": "npm run build && electron . --styling",
     "dev:live": "npm run build && electron . --live-state",
+    "dev:live:debug": "npm run build && electron . --live-state --pty-debug",
     "rebuild": "electron-rebuild",
     "package": "electron-forge package",
     "make": "electron-forge make"
