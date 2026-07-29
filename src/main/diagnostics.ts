@@ -60,13 +60,28 @@ export function startDiagnostics(
   intervalMs = 100,
   thresholdMs = 50,
 ): Diagnostics {
-  const stream = fs.createWriteStream(path.join(logDir, 'diagnostics-loop.log'), { flags: 'a' });
+  // The dev run redirects userData to a subdirectory that may not exist yet; without
+  // this the stream fails asynchronously and the log silently never appears.
+  try {
+    fs.mkdirSync(logDir, { recursive: true });
+  } catch {
+    // fall through — the stream error handler below will report it
+  }
+  const logPath = path.join(logDir, 'diagnostics-loop.log');
+  const stream = fs.createWriteStream(logPath, { flags: 'a' });
+  stream.on('error', (err) => {
+    // eslint-disable-next-line no-console
+    console.error(`[diag] cannot write ${logPath}:`, err);
+  });
   const write = (line: string) => {
     const stamped = `[${new Date().toISOString()}] ${line}`;
     stream.write(`${stamped}\n`);
     // eslint-disable-next-line no-console
     console.log(`[diag] ${line}`);
   };
+  // Print the absolute path so the log can be found without guessing at userData.
+  // eslint-disable-next-line no-console
+  console.log(`[diag] logging to ${logPath}`);
   write(`=== diagnostics started (interval ${intervalMs}ms, stall threshold ${thresholdMs}ms) ===`);
 
   let chunks = 0;
