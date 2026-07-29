@@ -59,6 +59,7 @@ export function startDiagnostics(
   logDir: string,
   intervalMs = 100,
   thresholdMs = 50,
+  heartbeatMs = 60_000,
 ): Diagnostics {
   // The dev run redirects userData to a subdirectory that may not exist yet; without
   // this the stream fails asynchronously and the log silently never appears.
@@ -86,14 +87,32 @@ export function startDiagnostics(
 
   let chunks = 0;
   let bytes = 0;
+  let sinceHeartbeatChunks = 0;
+  let sinceHeartbeatBytes = 0;
+  let lastHeartbeatAt = Date.now();
   let expected = Date.now() + intervalMs;
   const tick = () => {
     const now = Date.now();
     const lag = now - expected;
-    if (chunks > 0) write(`output: ${chunks} chunks, ${bytes} bytes`);
-    if (lag > thresholdMs) write(`event-loop stalled ${lag}ms`);
+    // Report output volume only alongside a stall, where it is the evidence that
+    // separates saturation from a blocking call. Writing a line every window
+    // flooded the log and added main-process work to the very thing being measured.
+    if (lag > thresholdMs) {
+      write(`event-loop stalled ${lag}ms (output this window: ${chunks} chunks, ${bytes} bytes)`);
+    }
+    sinceHeartbeatChunks += chunks;
+    sinceHeartbeatBytes += bytes;
     chunks = 0;
     bytes = 0;
+    // A periodic summary keeps a quiet log informative: it shows how loaded the
+    // instance was, so "no stalls" can be read against real throughput.
+    if (now - lastHeartbeatAt >= heartbeatMs) {
+      const seconds = Math.round((now - lastHeartbeatAt) / 1000);
+      write(`heartbeat: ${sinceHeartbeatChunks} chunks, ${sinceHeartbeatBytes} bytes in last ${seconds}s`);
+      sinceHeartbeatChunks = 0;
+      sinceHeartbeatBytes = 0;
+      lastHeartbeatAt = now;
+    }
     expected = now + intervalMs;
     timer = setTimeout(tick, intervalMs);
   };
