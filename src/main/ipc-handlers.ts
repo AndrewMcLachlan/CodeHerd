@@ -435,8 +435,15 @@ export function registerIpcHandlers(
     ptyManager.resize(tabId, cols, rows);
   });
 
-  ipcMain.handle(IPC.TAB_INPUT, async (_event, { tabId, data }: { tabId: string; data: string }): Promise<void> => {
-    getDiagnostics()?.log('input', `tab=${tabId} ${escapeControl(data)}`);
+  ipcMain.handle(IPC.TAB_INPUT, async (
+    _event,
+    { tabId, data, sentAt }: { tabId: string; data: string; sentAt?: number },
+  ): Promise<void> => {
+    // lag = how long this keystroke waited between leaving the renderer and being
+    // serviced here. Both processes share a clock, so a large value is direct
+    // evidence the main process was blocked rather than the key arriving late.
+    const lag = sentAt ? ` lag=${Date.now() - sentAt}ms` : '';
+    getDiagnostics()?.log('input', `tab=${tabId} ${escapeControl(data)}${lag}`);
     const tab = tabs.get(tabId);
     if (tab) {
       tab.lastActivityAt = Date.now();
