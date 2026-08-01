@@ -31,13 +31,19 @@ function getThemeColors(resolved: ResolvedTheme) {
   return { bg: '#1e1e2e', titleBar: '#11111b', symbolColor: '#cdd6f4' };
 }
 
+/** Live view of the tab table for callers outside the IPC layer. */
+export interface IpcHandlers {
+  /** Current tabs. Read live rather than from state.json, which only reflects the last save. */
+  getTabs: () => TabState[];
+}
+
 export function registerIpcHandlers(
   ptyManager: PtyManager,
   stateManager: StateManager,
   getMainWindow: () => BrowserWindow | null,
   isQuitting: () => boolean,
   rebuildMenu?: (items?: RecentlyClosedTab[]) => void,
-): void {
+): IpcHandlers {
   const tabs = new Map<string, TabState>();
   const agentRegistry = new AgentRegistry();
   const sessionTracker = new SessionTracker(agentRegistry);
@@ -759,4 +765,8 @@ export function registerIpcHandlers(
         break;
     }
   });
+
+  return {
+    getTabs: () => Array.from(tabs.values()),
+  };
 }

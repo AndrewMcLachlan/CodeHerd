@@ -1,9 +1,10 @@
-import { app, BrowserWindow, Menu, nativeTheme } from 'electron';
-import type { RecentlyClosedTab } from '../shared/types';
+import { app, BrowserWindow, Menu, dialog, nativeTheme } from 'electron';
+import type { RecentlyClosedTab, TabState } from '../shared/types';
 import * as path from 'path';
 import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
 import { registerIpcHandlers } from './ipc-handlers';
+import { buildShutdownPrompt, selectBusyTabs } from './shutdown-guard';
 import { buildAppMenu } from './menu';
 import { detectAvailableAgents } from './agent-detection';
 import { checkForUpdate } from './update-checker';
@@ -31,6 +32,9 @@ if (!app.isPackaged) {
 const useLiveState = app.isPackaged || process.argv.includes('--live-state');
 
 let mainWindow: BrowserWindow | null = null;
+// Set once the IPC layer is registered. Defaults to an empty list so the close
+// handler can never block a quit on state that doesn't exist yet.
+let getTabs: () => TabState[] = () => [];
 const ptyManager = new PtyManager();
 const stateManager = new StateManager(useLiveState ? STATE_DIR : `${STATE_DIR}-dev`);
 
@@ -128,6 +132,24 @@ function createWindow(): void {
   mainWindow.on('close', (e) => {
     if (!isQuitting) {
       e.preventDefault();
+
+      // Confirm before cutting off an agent mid-turn. Checked before isQuitting is
+      // set so cancelling leaves the window fully usable rather than half-shut.
+      const prompt = buildShutdownPrompt(selectBusyTabs(getTabs()));
+      if (prompt && mainWindow && !mainWindow.isDestroyed()) {
+        const choice = dialog.showMessageBoxSync(mainWindow, {
+          type: 'question',
+          buttons: ['Quit anyway', 'Cancel'],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+          title: 'Agents still working',
+          message: prompt.message,
+          detail: prompt.detail,
+        });
+        if (choice !== 0) return; // Cancelled — stay open, still not quitting.
+      }
+
       isQuitting = true;
 
       // Hide window immediately so it feels instant
@@ -197,7 +219,8 @@ app.whenReady().then(() => {
       prefs.defaultAgent,
     ));
   };
-  registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting, rebuildMenu);
+  const ipc = registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting, rebuildMenu);
+  getTabs = ipc.getTabs;
   rebuildMenu();
   createWindow();
 
