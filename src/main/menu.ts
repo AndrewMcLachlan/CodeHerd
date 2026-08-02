@@ -77,9 +77,18 @@ export function buildAppMenu(
     {
       label: 'Edit',
       submenu: [
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' },
+        // On Windows/Linux these roles must NOT register their accelerators. The
+        // terminal owns Ctrl+C/V/A: Ctrl+C copies the xterm selection or falls
+        // through to the PTY as SIGINT, Ctrl+V runs the bracketed-paste path, and
+        // Ctrl+A is readline's beginning-of-line. A registered role fires natively —
+        // outside the page, where preventDefault cannot reach it — and acts on the
+        // focused element's DOM selection, which is empty because xterm paints its
+        // own. That swallowed Ctrl+C before it could reach the agent as an interrupt.
+        // The items stay clickable and still display their shortcut. macOS keeps them
+        // registered: Cmd+C/V/A never collide with the terminal's control keys.
+        { role: 'copy', registerAccelerator: isMac },
+        { role: 'paste', registerAccelerator: isMac },
+        { role: 'selectAll', registerAccelerator: isMac },
       ],
     },
     {

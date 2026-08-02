@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.invoke(IPC.FOLDER_PICK),
   getState: (): Promise<AppState> =>
     ipcRenderer.invoke(IPC.STATE_GET),
-  clipboardWrite: (text: string): Promise<void> =>
+  clipboardWrite: (text: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC.CLIPBOARD_WRITE, text),
   clipboardRead: (): Promise<string> =>
     ipcRenderer.invoke(IPC.CLIPBOARD_READ),
