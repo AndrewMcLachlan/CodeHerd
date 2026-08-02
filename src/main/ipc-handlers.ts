@@ -526,16 +526,18 @@ export function registerIpcHandlers(
     return stateManager.getState();
   });
 
-  ipcMain.handle(IPC.CLIPBOARD_WRITE, async (_event, text: string): Promise<void> => {
+  ipcMain.handle(IPC.CLIPBOARD_WRITE, async (_event, text: string): Promise<boolean> => {
     // The Win32 clipboard is a global lock, and writes silently fail when a
     // clipboard listener (Windows clipboard history, Ditto, PowerToys, ...)
-    // happens to hold it. Verify the write landed and retry briefly (#59)
+    // happens to hold it. Verify the write landed and retry briefly (#59).
+    // Reports success so the caller can keep the selection alive on failure.
     for (let attempt = 0; attempt < 5; attempt++) {
       clipboard.writeText(text);
-      if (clipboard.readText() === text) return;
+      if (clipboard.readText() === text) return true;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     console.warn('clipboard write failed after retries');
+    return false;
   });
 
   ipcMain.handle(IPC.CLIPBOARD_READ, async (): Promise<string> => {

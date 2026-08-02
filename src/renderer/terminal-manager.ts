@@ -174,14 +174,16 @@ export class TerminalManager {
         // Gate on hasSelection() rather than the extracted text so an active
         // selection can never degrade into a surprise SIGINT (#59)
         if (terminal.hasSelection()) {
-          // preventDefault so the native copy command and the Edit menu
-          // accelerator can't race our clipboard write (#59)
           e.preventDefault();
           const selection = terminal.getSelection();
           if (selection) {
-            window.codeherd.clipboardWrite(selection);
+            // Keep the selection until the write is confirmed. Clearing it up front
+            // meant a failed copy also destroyed what you had highlighted, forcing a
+            // re-select before every retry (#59)
+            void window.codeherd.clipboardWrite(selection).then((copied) => {
+              if (copied) terminal.clearSelection();
+            });
           }
-          terminal.clearSelection();
           return false; // Don't send to PTY
         }
         if (e.shiftKey) return false; // Ctrl+Shift+C never sends to PTY
@@ -239,17 +241,25 @@ export class TerminalManager {
     // (Windows Terminal convention — gives a reliable copy/paste path, #59)
     element.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      const selection = terminal.getSelection();
-      if (selection) {
-        window.codeherd.clipboardWrite(selection);
-        terminal.clearSelection();
-      } else {
-        window.codeherd.clipboardRead().then((text) => {
-          if (text) {
-            terminal.paste(text);
-          }
-        });
+      // Branch on hasSelection(), NEVER on the extracted text. getSelection() can
+      // return empty for a live selection — the agent repaints those rows and the
+      // read picks up the new, blank cells — and the empty string then fell through
+      // to the paste arm, dumping the clipboard into the agent's composer while the
+      // user was trying to copy.
+      if (terminal.hasSelection()) {
+        const selection = terminal.getSelection();
+        if (selection) {
+          void window.codeherd.clipboardWrite(selection).then((copied) => {
+            if (copied) terminal.clearSelection();
+          });
+        }
+        return;
       }
+      window.codeherd.clipboardRead().then((text) => {
+        if (text) {
+          terminal.paste(text);
+        }
+      });
     });
 
     // Forward user input to main process
