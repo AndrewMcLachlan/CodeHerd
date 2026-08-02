@@ -1,0 +1,99 @@
+name: Release
+
+# Runs when a GitHub release is published — i.e. when a human publishes the draft that
+# Prepare Release staged, which is also what mints the version tag.
+#
+# This workflow publishes nothing. CodeHerd distributes through the GitHub release
+# itself, so by this point the artifacts are already live; the job of this workflow is
+# to verify loudly that what went out is coherent, and to leave a record of it. It is a
+# tripwire, not a step in the pipeline: a failure here means a human needs to look at
+# the release, not that the release did not happen.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Verify the tag matches package.json
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::Tag $TAG does not match package.json version $VERSION at this commit."
+            exit 1
+          fi
+          echo "Tag $TAG matches package.json."
+
+      # A release built from a commit that never reached main would be unreproducible
+      # from the default branch's history.
+      - name: Verify the commit is on main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::The released commit is not an ancestor of main. Releases must ship reviewed, merged code."
+            exit 1
+          fi
+          echo "Released commit is on main."
+
+      # The check that keeps betas out of /releases/latest. Prepare Release sets this on
+      # the draft, so failing here means it was changed by hand at publish time — and
+      # stable users are being offered a prerelease (#106).
+      - name: Verify the pre-release flag
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          ACTUAL="${{ github.event.release.prerelease }}"
+          EXPECTED=false
+          case "$TAG" in *-*) EXPECTED=true ;; esac
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::$TAG is published with prerelease=$ACTUAL but should be $EXPECTED. Fix it in the release UI now: a prerelease marked latest will notify stable users."
+            exit 1
+          fi
+          echo "Pre-release flag correct for $TAG (prerelease=$EXPECTED)."
+
+      - name: Verify published assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          ASSETS=$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets --jq '.assets[].name')
+          echo "$ASSETS"
+          need() {
+            if ! echo "$ASSETS" | grep -q -- "$1"; then
+              echo "::error::Published release $TAG is missing an asset matching: $1"
+              exit 1
+            fi
+          }
+          need "Setup.exe"
+          need "CodeHerd-win32-x64-.*\.zip"
+          need "CodeHerd-darwin-.*\.zip"
+          need "CodeHerd-darwin-.*\.dmg"
+          need "CodeHerd-linux-x64-.*\.zip"
+          need "codeherd_.*_amd64\.deb"
+          need "SHA256SUMS"
+          echo "All expected assets present."
+
+      - name: Summary
+        run: |
+          {
+            echo "### Release ${{ github.event.release.tag_name }} verified"
+            echo ""
+            echo "- Pre-release: \`${{ github.event.release.prerelease }}\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Tag matches package.json, commit is on main, all expected assets present."
+          } >> "$GITHUB_STEP_SUMMARY"

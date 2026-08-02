@@ -1,0 +1,264 @@
+name: Prepare Release
+
+# Builds the release artifacts for the version in package.json and attaches them to a
+# DRAFT GitHub release, after verifying the commit is release-ready.
+#
+# A draft creates no tag and is not visible to users. Reviewing and publishing it is a
+# manual, human action: publishing mints the version tag under the publisher's own
+# account, which is why the "Version tags" ruleset can block tag creation for everything
+# else (including this workflow's token). Nothing here is irreversible — a bad draft is
+# deleted, not un-released.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One release at a time. Two concurrent runs would race on the same tag and draft.
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Read version from package.json
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read a version from package.json."
+            exit 1
+          fi
+          # Squirrel-safe scheme: 1.0.0-beta1, not 1.0.0-beta.1 (see docs/RELEASE_CHECKLIST.md).
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+[0-9]+)?$'; then
+            echo "::error::Version '$VERSION' is not X.Y.Z or X.Y.Z-<stage><n> (e.g. 1.0.0-beta2)."
+            exit 1
+          fi
+          # A hyphenated version is a prerelease, so it stays out of /releases/latest and
+          # stable users are never notified about betas (#106).
+          PRERELEASE=false
+          case "$VERSION" in *-*) PRERELEASE=true ;; esac
+          {
+            echo "version=$VERSION"
+            echo "tag=v$VERSION"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Preparing v$VERSION (prerelease=$PRERELEASE)"
+
+      - name: Verify the release is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists. Bump the version in package.json before preparing a release."
+            exit 1
+          fi
+          if gh release list --repo "${{ github.repository }}" --json tagName --jq ".[] | select(.tagName == \"$TAG\")" | grep -q .; then
+            echo "::error::A release or draft for $TAG already exists. Publish or delete it before preparing another."
+            exit 1
+          fi
+
+      # Release only from a commit whose CI actually passed. Checks are matched by prefix
+      # so adding a platform to the build matrix does not require editing this workflow.
+      - name: Verify CI is green for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUNS=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/check-runs" --paginate \
+            --jq '[.check_runs[] | select(.name | startswith("build ("))] | map({name, conclusion})')
+          COUNT=$(echo "$RUNS" | jq 'length')
+          if [ "$COUNT" -lt 3 ]; then
+            echo "::error::Expected at least 3 platform build checks for ${{ github.sha }}, found $COUNT. Wait for CI to finish."
+            echo "$RUNS" | jq .
+            exit 1
+          fi
+          FAILED=$(echo "$RUNS" | jq -r '[.[] | select(.conclusion != "success")] | length')
+          if [ "$FAILED" != "0" ]; then
+            echo "::error::Not every platform build succeeded for ${{ github.sha }}. Release from a commit with green CI."
+            echo "$RUNS" | jq .
+            exit 1
+          fi
+          echo "$COUNT platform builds green for ${{ github.sha }}."
+
+  build:
+    needs: validate
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-2022
+            platform: win32
+          - os: macos-latest
+            platform: darwin
+          - os: ubuntu-latest
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Re-run the gates here rather than trusting the earlier CI run: these are the
+      # exact binaries being shipped, built from this checkout.
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Make distributables
+        run: npm run make
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-${{ matrix.platform }}
+          path: out/make/**/*
+          retention-days: 14
+
+  draft:
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create the draft release
+      id-token: write      # OIDC for provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: artifacts
+          pattern: release-*
+          merge-multiple: true
+
+      # Squirrel's .nupkg and RELEASES manifest only matter for a hosted
+      # auto-update feed, which CodeHerd doesn't run — keep them out of releases.
+      - name: Prune updater metadata
+        run: |
+          find artifacts -name '*.nupkg' -delete
+          find artifacts -name 'RELEASES' -delete
+
+      # Fail before drafting if any expected platform artifact is missing — a maker
+      # silently not running must not produce a partial release.
+      - name: Verify expected artifacts
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          ls -R artifacts
+          check() {
+            local matches=(artifacts/**/$1)
+            if [ ${#matches[@]} -eq 0 ]; then
+              echo "::error::Missing expected release artifact: $1"
+              exit 1
+            fi
+          }
+          check "CodeHerd-win32-x64-*-Setup.exe"
+          check "CodeHerd-win32-x64-*.zip"
+          check "CodeHerd-darwin-*-*.zip"
+          check "CodeHerd-linux-x64-*.zip"
+          check "CodeHerd-darwin-*-*.dmg"
+          check "codeherd_*_amd64.deb"
+
+      # Guards against shipping artifacts built from a different version than the tag
+      # claims — e.g. a stale out/ directory or a half-applied version bump.
+      - name: Verify artifact versions match the tag
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          # The deb maker replaces the prerelease hyphen with a dot (Debian version rules).
+          DEB_VERSION="${VERSION//-/.}"
+          shopt -s globstar nullglob
+          for f in artifacts/**/CodeHerd-*; do
+            base=$(basename "$f")
+            case "$base" in
+              *"$VERSION"*) ;;
+              *) echo "::error::Artifact '$base' does not carry version $VERSION."; exit 1 ;;
+            esac
+          done
+          for f in artifacts/**/codeherd_*.deb; do
+            base=$(basename "$f")
+            case "$base" in
+              *"$DEB_VERSION"*) ;;
+              *) echo "::error::Debian artifact '$base' does not carry version $DEB_VERSION."; exit 1 ;;
+            esac
+          done
+          echo "All artifacts carry version $VERSION."
+
+      # Checksums let users of unsigned builds verify their download; the file
+      # lists bare filenames so `sha256sum -c` works in the download directory.
+      - name: Generate SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd artifacts
+          find . -type f \( -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*-Setup.exe' \) -print0 |
+            while IFS= read -r -d '' f; do
+              (cd "$(dirname "$f")" && sha256sum "$(basename "$f")")
+            done | sort -k2 > SHA256SUMS
+          cat SHA256SUMS
+
+      # Signed build-provenance attestations (verifiable with
+      # `gh attestation verify <file> --repo AndrewMcLachlan/CodeHerd`) —
+      # the affordable integrity story for unsigned binaries.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        with:
+          subject-path: |
+            artifacts/**/*.zip
+            artifacts/**/*.dmg
+            artifacts/**/*.deb
+            artifacts/**/*-Setup.exe
+
+      # --draft: creates no tag and is invisible to users. Publishing it by hand mints
+      # the tag and is the single human gate on the whole pipeline.
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.validate.outputs.tag }}"
+          ARGS=(--draft --target "${{ github.sha }}" --title "$TAG" --generate-notes)
+          if [ "${{ needs.validate.outputs.prerelease }}" = "true" ]; then
+            ARGS+=(--prerelease)
+          fi
+          # Flatten: release assets are a single namespace, and merge-multiple already
+          # collapsed the per-platform folders.
+          mapfile -t FILES < <(find artifacts -type f)
+          gh release create "$TAG" --repo "${{ github.repository }}" "${ARGS[@]}" "${FILES[@]}"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Draft release ${{ needs.validate.outputs.tag }} created"
+            echo ""
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Pre-release: \`${{ needs.validate.outputs.prerelease }}\`"
+            echo ""
+            echo "Download and smoke test the artifacts, then **publish the draft** to mint the tag."
+            echo "Publishing runs the Release workflow, which re-verifies the published release."
+          } >> "$GITHUB_STEP_SUMMARY"
