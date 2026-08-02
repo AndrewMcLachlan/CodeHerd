@@ -18,6 +18,7 @@ import { getAvailableUpdate } from './update-checker';
 import { CodexCommandTracker } from './codex-command-tracker';
 import { normalizeTabColor } from '../shared/tab-colors';
 import { isPtyDebugEnabled } from './diagnostics';
+import { normalizeFolder, selectTabForHistoryRollforward } from './history-attribution';
 
 function resolveTheme(pref: ThemePreference): ResolvedTheme {
   if (pref === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
@@ -88,30 +89,15 @@ export function registerIpcHandlers(
   });
   metadataWatcher.start();
 
-  const normalizeFolder = (p: string): string => p
-    .replace(/^\\\\\?\\/, '')
-    .replace(/\\/g, '/')
-    .replace(/\/+$/, '')
-    .toLowerCase();
-
   // A tab's sessionId is captured once, at spawn. But Claude rolls it forward mid-tab
   // (notably `/clear`, which starts a new conversation under a new id), and nothing
   // else tells us. Without this, restart resumes the stale session. history.jsonl gets
   // one entry per submitted prompt tagged with the *current* session id for its folder,
-  // so we use it to keep the owning tab in sync.
+  // so we use it to keep the owning tab in sync. Attribution is best-effort and must not
+  // hijack a session another same-folder tab already owns (#109) — see the helper.
   const historyWatcher = new HistoryWatcher(async ({ project, sessionId }) => {
-    const target = normalizeFolder(project);
-    const candidates = Array.from(tabs.values()).filter(
-      t => t.agent === 'claude' && normalizeFolder(t.launchFolder) === target,
-    );
-    if (candidates.length === 0) return;
-
-    // With multiple tabs on the same folder, the prompt that produced this entry came
-    // from whichever the user is interacting with — prefer the active tab, else the
-    // most recently active one.
-    const tab = candidates.find(t => t.isActive)
-      ?? candidates.sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
-    if (!tab || tab.sessionId === sessionId) return;
+    const tab = selectTabForHistoryRollforward(Array.from(tabs.values()), project, sessionId);
+    if (!tab) return;
 
     // A background agent logs prompts against the same project folder as the tab it was
     // launched from, but it's a separate conversation the user drives elsewhere. Adopting
