@@ -1,22 +1,35 @@
 name: Build
 
+# Continuous integration only. Releasing is deliberately NOT triggered from here:
+# pushing a tag no longer publishes anything. Use the Prepare Release workflow,
+# which builds the artifacts into a draft release for a human to review and publish.
 on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
   pull_request:
     branches:
       - main
   workflow_dispatch:
 
+# Least privilege: CI only reads the repo. Jobs that need more request it themselves.
 permissions:
-  contents: write
+  contents: read
+
+# Supersede in-flight PR builds, but never cancel a main build — a release
+# verifies against the build check for its commit.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # The job id and matrix key ORDER below determine the check names
+  # ("build (windows-2022, win32)", ...) that the `main` ruleset requires.
+  # Renaming the job, or reordering os/platform, breaks merges into main until
+  # the ruleset's required status checks are updated to match.
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-2022
@@ -29,15 +42,18 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
 
+      # `ci` not `install`: installs exactly what package-lock.json pins and fails
+      # if the lockfile has drifted from package.json, so CI cannot silently test a
+      # different dependency tree than a release builds.
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Type check
         run: npm run typecheck
@@ -52,84 +68,7 @@ jobs:
         run: npm run make
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: codeherd-${{ matrix.platform }}
           path: out/make/**/*
-
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
-
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      # Squirrel's .nupkg and RELEASES manifest only matter for a hosted
-      # auto-update feed, which CodeHerd doesn't run — keep them out of releases.
-      - name: Prune updater metadata
-        run: |
-          find artifacts -name '*.nupkg' -delete
-          find artifacts -name 'RELEASES' -delete
-
-      # Fail the release before publishing if any expected platform artifact is
-      # missing — a maker silently not running must not produce a partial release.
-      - name: Verify expected artifacts
-        run: |
-          set -euo pipefail
-          shopt -s globstar nullglob
-          ls -R artifacts
-          check() {
-            local matches=(artifacts/**/$1)
-            if [ ${#matches[@]} -eq 0 ]; then
-              echo "::error::Missing expected release artifact: $1"
-              exit 1
-            fi
-          }
-          check "CodeHerd-win32-x64-*-Setup.exe"
-          check "CodeHerd-win32-x64-*.zip"
-          check "CodeHerd-darwin-*-*.zip"
-          check "CodeHerd-linux-x64-*.zip"
-          check "CodeHerd-darwin-*-*.dmg"
-          check "codeherd_*_amd64.deb"
-
-      # Checksums let users of unsigned builds verify their download; the file
-      # lists bare filenames so `sha256sum -c` works in the download directory.
-      - name: Generate SHA256SUMS
-        run: |
-          set -euo pipefail
-          cd artifacts
-          find . -type f \( -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*-Setup.exe' \) -print0 |
-            while IFS= read -r -d '' f; do
-              (cd "$(dirname "$f")" && sha256sum "$(basename "$f")")
-            done | sort -k2 > SHA256SUMS
-          cat SHA256SUMS
-
-      # Publish signed build-provenance attestations (verifiable with
-      # `gh attestation verify <file> --repo AndrewMcLachlan/CodeHerd`) —
-      # the affordable integrity story for unsigned binaries.
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-path: |
-            artifacts/**/*.zip
-            artifacts/**/*.dmg
-            artifacts/**/*.deb
-            artifacts/**/*-Setup.exe
-
-      - name: Create release
-        uses: softprops/action-gh-release@v3
-        with:
-          files: artifacts/**/*
-          generate_release_notes: true
-          # Any hyphenated tag (v1.0.0-beta1, v1.0.0-rc1) is a prerelease, so it
-          # stays out of /releases/latest — stable users are never notified about
-          # betas, and prerelease builds still find it via the release list (#106).
-          prerelease: ${{ contains(github.ref_name, '-') }}

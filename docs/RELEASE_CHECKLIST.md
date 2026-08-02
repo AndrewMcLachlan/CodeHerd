@@ -56,8 +56,36 @@ marked **experimental** in the release notes.
 
 ## Release artifacts (once per release, any platform)
 
-- [ ] CI release job passed its artifact-verification step
+- [ ] Prepare Release passed its artifact-verification step
 - [ ] `SHA256SUMS` verifies against a downloaded artifact
 - [ ] `gh attestation verify <artifact> --repo AndrewMcLachlan/CodeHerd` passes
 - [ ] Release notes list supported agents, platforms, installation caveats,
       and known limitations
+
+## Cutting the release
+
+Pushing a tag does **not** release. Tags are protected by the *Version tags*
+ruleset and can only be created by a repository admin or maintainer — which in
+practice means by publishing a draft release. That is the single human gate on
+the pipeline, and it comes after the artifacts exist.
+
+1. **Bump `version` in `package.json`** on `main` and let CI go green.
+   Use the Squirrel-safe scheme — `1.0.0-beta2`, not `1.0.0-beta.2` — because
+   Squirrel strips dots from prerelease identifiers. A hyphen anywhere in the
+   version marks the release as a pre-release automatically, keeping it out of
+   `/releases/latest` so stable users are not notified about it.
+2. **Run the *Prepare Release* workflow** from `main`. It refuses to run if the
+   tag or a release for it already exists, or if the platform builds were not
+   green for that commit. It then rebuilds every platform from that checkout,
+   verifies each expected artifact is present and carries the right version,
+   writes `SHA256SUMS`, attests build provenance, and attaches everything to a
+   **draft** release. No tag exists yet and users cannot see it.
+3. **Smoke test the draft's artifacts** using this checklist. A bad draft is
+   deleted — nothing has been released.
+4. **Publish the draft.** This mints the tag and makes the release live. Check
+   the pre-release box is in the state you expect before publishing.
+5. **Confirm the *Release* workflow is green.** It re-verifies the published
+   release: tag matches `package.json`, the commit is an ancestor of `main`,
+   the pre-release flag matches the version, and every expected asset is
+   attached. It publishes nothing — a failure means go and look at the release,
+   not that the release failed.
