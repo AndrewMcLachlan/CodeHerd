@@ -191,8 +191,6 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ needs.validate.outputs.version }}"
-          # The deb maker replaces the prerelease hyphen with a dot (Debian version rules).
-          DEB_VERSION="${VERSION//-/.}"
           shopt -s globstar nullglob
           for f in artifacts/**/CodeHerd-*; do
             base=$(basename "$f")
@@ -201,12 +199,25 @@ jobs:
               *) echo "::error::Artifact '$base' does not carry version $VERSION."; exit 1 ;;
             esac
           done
+          # A Debian version may not contain '-', so the maker substitutes it, and which
+          # character it uses is not stable: 1.0.0-beta1 shipped as 1.0.0.beta1 while
+          # 1.0.0-beta2 built as 1.0.0~beta2. Tilde is the correct convention — it sorts
+          # BEFORE the final release, so 1.0.0~beta2 < 1.0.0 — but pinning any single
+          # character fails the gate on a perfectly good build. Compare against each
+          # accepted spelling as a literal substring: a regex here would need the dots
+          # escaping, and getting that subtly wrong turns them into wildcards that match
+          # almost anything, which is worse than no check at all.
           for f in artifacts/**/codeherd_*.deb; do
             base=$(basename "$f")
-            case "$base" in
-              *"$DEB_VERSION"*) ;;
-              *) echo "::error::Debian artifact '$base' does not carry version $DEB_VERSION."; exit 1 ;;
-            esac
+            matched=
+            for sep in '-' '.' '~'; do
+              candidate="${VERSION//-/$sep}"
+              case "$base" in *"$candidate"*) matched=1 ;; esac
+            done
+            if [ -z "$matched" ]; then
+              echo "::error::Debian artifact '$base' does not carry version $VERSION (any of - . ~ accepted before a prerelease suffix)."
+              exit 1
+            fi
           done
           echo "All artifacts carry version $VERSION."
 
