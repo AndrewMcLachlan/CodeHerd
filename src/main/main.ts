@@ -5,6 +5,7 @@ import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { buildShutdownPrompt, selectBusyTabs } from './shutdown-guard';
+import { routeLinksToBrowser } from './external-links';
 import { buildAppMenu } from './menu';
 import { detectAvailableAgents } from './agent-detection';
 import { checkForUpdate } from './update-checker';
@@ -98,6 +99,10 @@ function createWindow(): void {
       contextIsolation: true,
     },
   });
+
+  // Links must reach the default browser, never open a frameless app window or
+  // replace the UI. Dropping a link on the window is the easy way to hit the latter.
+  routeLinksToBrowser(mainWindow.webContents);
 
   if (bounds.isMaximized) {
     mainWindow.maximize();

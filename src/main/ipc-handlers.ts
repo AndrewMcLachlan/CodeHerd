@@ -19,6 +19,7 @@ import { CodexCommandTracker } from './codex-command-tracker';
 import { normalizeTabColor } from '../shared/tab-colors';
 import { isPtyDebugEnabled } from './diagnostics';
 import { normalizeFolder, selectTabForHistoryRollforward } from './history-attribution';
+import { openExternal, routeLinksToBrowser } from './external-links';
 
 function resolveTheme(pref: ThemePreference): ResolvedTheme {
   if (pref === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
@@ -580,10 +581,9 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle(IPC.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {
-    // Only allow http/https URLs
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url);
-    }
+    // Scheme check lives in openExternal so every caller gets the same one.
+    // This URL comes from terminal output, so it is fully untrusted.
+    openExternal(url);
   });
 
   ipcMain.on('about:get-version', (event) => {
@@ -602,11 +602,13 @@ export function registerIpcHandlers(
 
   ipcMain.on(IPC.UPDATE_OPEN, () => {
     const update = getAvailableUpdate();
-    if (update) shell.openExternal(update.url);
+    // The URL comes from the GitHub API response, so it goes through the same
+    // scheme check as any other external link.
+    if (update) openExternal(update.url);
   });
 
   ipcMain.on('about:open-github', () => {
-    shell.openExternal('https://github.com/AndrewMcLachlan/CodeHerd');
+    openExternal('https://github.com/AndrewMcLachlan/CodeHerd');
   });
 
   let aboutWin: BrowserWindow | null = null;
@@ -693,6 +695,7 @@ export function registerIpcHandlers(
             preload: path.join(__dirname, 'about-preload.js'),
           },
         });
+        routeLinksToBrowser(aboutWin.webContents);
         aboutWin.on('closed', () => { aboutWin = null; });
         aboutWin.loadFile(path.join(__dirname, 'about.html'));
         break;
@@ -732,6 +735,7 @@ export function registerIpcHandlers(
         prefsSession.setPermissionRequestHandler((requestingContents, permission, callback) => {
           callback(canAccessLocalFonts(requestingContents, permission));
         });
+        routeLinksToBrowser(prefsWin.webContents);
         prefsWin.on('closed', () => { prefsWin = null; });
         prefsWin.loadFile(path.join(__dirname, 'preferences.html'));
         break;
