@@ -127,6 +127,18 @@ export class TerminalManager {
       // are trimmed out of scrollback, which made copy flaky during
       // long streaming output (#59)
       scrollback: 10000,
+      // OSC 8 hyperlinks — what Claude Code emits for PR and docs links — are a
+      // different mechanism from WebLinksAddon, which only regex-matches plain
+      // URLs in the text. xterm handles OSC 8 itself unless given a handler, and
+      // its fallback opens the URL with window.open: in Electron that is a new
+      // frameless app window on the app's own session, with none of the browser's
+      // logins, extensions, or history, and no address bar. Route them to the
+      // default browser exactly like plain URLs.
+      linkHandler: {
+        activate: (_event, uri) => {
+          window.codeherd.openExternal(uri);
+        },
+      },
     });
 
     const fitAddon = new FitAddon();
