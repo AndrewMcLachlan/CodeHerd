@@ -10,6 +10,11 @@ name: Prepare Release
 # deleted, not un-released.
 on:
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Mark as pre-release (keeps it out of /releases/latest, so only users already on a pre-release build are offered it)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -47,16 +52,28 @@ jobs:
             echo "::error::Version '$VERSION' is not X.Y.Z or X.Y.Z-<stage><n> (e.g. 1.0.0-beta2)."
             exit 1
           fi
-          # A hyphenated version is a prerelease, so it stays out of /releases/latest and
-          # stable users are never notified about betas (#106).
-          PRERELEASE=false
-          case "$VERSION" in *-*) PRERELEASE=true ;; esac
+          # Whether a pre-release version should also be the latest release is a judgement
+          # call, not something the version string can decide. While the 1.0 betas are
+          # ahead of everything on the 0.x line, they are the release users should be
+          # getting, so the default is to publish normally. It is an input rather than a
+          # rule so the choice is made deliberately, once, at the point of drafting.
+          PRERELEASE="${{ inputs.prerelease }}"
           {
             echo "version=$VERSION"
             echo "tag=v$VERSION"
             echo "prerelease=$PRERELEASE"
           } >> "$GITHUB_OUTPUT"
           echo "Preparing v$VERSION (prerelease=$PRERELEASE)"
+          # Say plainly who ends up being offered this build, so the consequence is
+          # visible at draft time rather than discovered from the update checker.
+          if [ "$PRERELEASE" = "true" ]; then
+            echo "::notice::v$VERSION will be a pre-release: it stays out of /releases/latest, so only users already running a pre-release build will be offered it (#106)."
+          else
+            case "$VERSION" in
+              *-*) echo "::warning::v$VERSION is a pre-release version being published as a normal release. It becomes /releases/latest, so everyone on a stable build will be offered it. Intended while the 1.0 betas lead the 0.x line — tick 'Mark as pre-release' if that is no longer true." ;;
+              *)   echo "::notice::v$VERSION will become /releases/latest and be offered to everyone." ;;
+            esac
+          fi
 
       - name: Verify the release is new
         env:
