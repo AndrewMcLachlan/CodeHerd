@@ -49,21 +49,34 @@ jobs:
           fi
           echo "Released commit is on main."
 
-      # The check that keeps betas out of /releases/latest. Prepare Release sets this on
-      # the draft, so failing here means it was changed by hand at publish time — and
-      # stable users are being offered a prerelease (#106).
-      - name: Verify the pre-release flag
+      # Whether a pre-release VERSION should be marked as a pre-release RELEASE is a
+      # judgement call — a 1.0 beta that leads the 0.x line is deliberately the latest
+      # release — so this reports rather than fails. Failing on a decision the maintainer
+      # made on purpose only teaches people to ignore the check.
+      #
+      # One direction is never a judgement call and still fails hard.
+      - name: Check the pre-release flag
         run: |
           set -euo pipefail
           TAG="${{ github.event.release.tag_name }}"
           ACTUAL="${{ github.event.release.prerelease }}"
-          EXPECTED=false
-          case "$TAG" in *-*) EXPECTED=true ;; esac
-          if [ "$ACTUAL" != "$EXPECTED" ]; then
-            echo "::error::$TAG is published with prerelease=$ACTUAL but should be $EXPECTED. Fix it in the release UI now: a prerelease marked latest will notify stable users."
-            exit 1
+          case "$TAG" in
+            *-*) ;;
+            *)
+              # A stable version hidden behind the pre-release flag is simply lost: it
+              # never becomes /releases/latest, so nobody on a stable build is told about
+              # it, and the update checker has nothing to offer them (#106).
+              if [ "$ACTUAL" = "true" ]; then
+                echo "::error::$TAG is a stable version marked as a pre-release. It will not appear as /releases/latest and stable users will never be offered it. Untick 'pre-release' on the release."
+                exit 1
+              fi
+              ;;
+          esac
+          if [ "$ACTUAL" = "true" ]; then
+            echo "::notice::$TAG is a pre-release: it stays out of /releases/latest, so only users already on a pre-release build will be offered it."
+          else
+            echo "::notice::$TAG is /releases/latest: everyone on a stable build will be offered it."
           fi
-          echo "Pre-release flag correct for $TAG (prerelease=$EXPECTED)."
 
       - name: Verify published assets
         env:
@@ -94,6 +107,7 @@ jobs:
             echo "### Release ${{ github.event.release.tag_name }} verified"
             echo ""
             echo "- Pre-release: \`${{ github.event.release.prerelease }}\`"
+            echo "- Offered to: \`${{ github.event.release.prerelease == true && 'pre-release users only' || 'everyone on a stable build' }}\`"
             echo "- Commit: \`${{ github.sha }}\`"
             echo "- Tag matches package.json, commit is on main, all expected assets present."
           } >> "$GITHUB_STEP_SUMMARY"
