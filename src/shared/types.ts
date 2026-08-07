@@ -65,6 +65,13 @@ export interface Preferences {
   tabSwitchMode: TabSwitchMode;
   newTabShortcut: NewTabShortcut;
   defaultAgent: AgentType;
+  /**
+   * Record a diagnostics timeline (event-loop stalls, input latency, clipboard
+   * outcomes) to diagnostics.log. Off by default; meant to be switched on and left
+   * running while waiting for an intermittent fault to recur. Does not record what
+   * you type — see describeInput — and is separate from raw PTY capture.
+   */
+  diagnosticLogging: boolean;
 }
 
 export interface AppState {

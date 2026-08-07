@@ -17,7 +17,13 @@ import { detectCodexAttention, detectStatus } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
 import { CodexCommandTracker } from './codex-command-tracker';
 import { normalizeTabColor } from '../shared/tab-colors';
-import { isPtyDebugEnabled } from './diagnostics';
+import {
+  isPtyDebugEnabled,
+  getDiagnostics,
+  describeInput,
+  startDiagnostics,
+  stopDiagnostics,
+} from './diagnostics';
 import { normalizeFolder, selectTabForHistoryRollforward } from './history-attribution';
 import { openExternal, routeLinksToBrowser } from './external-links';
 
@@ -313,6 +319,7 @@ export function registerIpcHandlers(
       : null;
 
     ptyManager.onData(tabId, (data) => {
+      getDiagnostics()?.countOutput(data.length);
       if (logStream) {
         // Log raw data with control codes visible
         const escaped = data.replace(/[\x00-\x1f\x7f]/g, (ch) => {
@@ -439,7 +446,18 @@ export function registerIpcHandlers(
     ptyManager.resize(tabId, cols, rows);
   });
 
-  ipcMain.handle(IPC.TAB_INPUT, async (_event, { tabId, data }: { tabId: string; data: string }): Promise<void> => {
+  ipcMain.handle(IPC.TAB_INPUT, async (
+    _event,
+    { tabId, data, sentAt }: { tabId: string; data: string; sentAt?: number },
+  ): Promise<void> => {
+    // lag = how long this keystroke waited between leaving the renderer and being
+    // serviced here. Both processes share a clock, so a large value is direct evidence
+    // the main process was blocked rather than the key arriving late.
+    const diag = getDiagnostics();
+    if (diag) {
+      const lag = sentAt ? ` lag=${Date.now() - sentAt}ms` : '';
+      diag.log('input', `tab=${tabId} ${describeInput(data)}${lag}`);
+    }
     const tab = tabs.get(tabId);
     if (tab) {
       tab.lastActivityAt = Date.now();
@@ -534,9 +552,15 @@ export function registerIpcHandlers(
     // Reports success so the caller can keep the selection alive on failure.
     for (let attempt = 0; attempt < 5; attempt++) {
       clipboard.writeText(text);
-      if (clipboard.readText() === text) return true;
+      if (clipboard.readText() === text) {
+        getDiagnostics()?.log('clipboard.write', `ok len=${text.length} attempt=${attempt + 1}`);
+        return true;
+      }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+    // No clipboard.write line after a copy is itself the signal: the renderer never
+    // got text out of the selection to send.
+    getDiagnostics()?.log('clipboard.write', `FAILED len=${text.length} after 5 attempts`);
     console.warn('clipboard write failed after retries');
     return false;
   });
@@ -623,6 +647,13 @@ export function registerIpcHandlers(
     stateManager.setPreferences(prefs);
     stateManager.save();
     safeSend('preferences:changed', prefs);
+
+    // Take effect immediately: the fault being chased is intermittent, so making the
+    // user restart to arm the recorder invites missing the next occurrence.
+    if (prefs.diagnosticLogging !== oldPrefs.diagnosticLogging) {
+      if (prefs.diagnosticLogging) startDiagnostics(app.getPath('userData'));
+      else stopDiagnostics();
+    }
 
     if (
       prefs.newTabShortcut !== oldPrefs.newTabShortcut
