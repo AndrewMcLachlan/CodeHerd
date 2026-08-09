@@ -9,7 +9,12 @@ import { routeLinksToBrowser } from './external-links';
 import { buildAppMenu } from './menu';
 import { detectAvailableAgents } from './agent-detection';
 import { checkForUpdate } from './update-checker';
-import { cleanPtyDebugLogs, isPtyDebugEnabled } from './diagnostics';
+import {
+  cleanPtyDebugLogs,
+  isPtyDebugEnabled,
+  isDiagnosticsEnabled,
+  startDiagnostics,
+} from './diagnostics';
 import { IPC } from '../shared/ipc-channels';
 import { STATE_DIR } from '../shared/constants';
 import { handleSquirrelEvent } from './squirrel-startup';
@@ -206,6 +211,12 @@ app.whenReady().then(() => {
   // the user is actively debugging this run.
   if (!isPtyDebugEnabled()) {
     cleanPtyDebugLogs(app.getPath('userData'));
+  }
+
+  // Arm the recorder before any window exists, so a fault during startup is captured
+  // too. Raw PTY debugging implies wanting the timeline alongside it.
+  if (isDiagnosticsEnabled() || isPtyDebugEnabled()) {
+    startDiagnostics(app.getPath('userData'));
   }
 
   const initialState = stateManager.getState();

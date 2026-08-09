@@ -104,6 +104,46 @@ State survives upgrades because it lives outside the install location:
 **Help → Open Diagnostics Folder** inside the app opens the app-data folder
 directly.
 
+## Recording a diagnostic log
+
+Some faults — a terminal that stops responding to keystrokes for tens of
+seconds, a copy that silently does not reach the clipboard — are intermittent
+and cannot be reproduced on demand. CodeHerd can record a timeline to help
+diagnose them, but it is off unless asked for, and there is no setting for it:
+it is a tool for chasing a specific problem, not something to leave configured.
+
+It records **timing only** — how long the main process stalled and how much
+terminal output arrived around the stall, how long each keystroke waited to be
+handled, whether clipboard writes succeeded, and how long CodeHerd spent reading
+session transcripts. Keys are recorded as *what kind* they were, never as what
+you typed: an arrow key appears as `<ESC>[B`, while typed text appears only as a
+count such as `<7 chars>`. The log rotates at 5 MB and keeps one previous file,
+so it is safe to leave running for as long as it takes for the fault to recur.
+
+**Windows** — set a user environment variable, then start CodeHerd normally:
+
+```powershell
+setx CODEHERD_DIAGNOSTICS 1
+```
+
+Prefer this over adding `--diagnostics` to the Start Menu shortcut. Shortcut
+arguments do not survive an upgrade, because the installer recreates the
+shortcut each time it updates the app.
+
+**macOS and Linux** — launch with the flag, or export the variable:
+
+```bash
+CODEHERD_DIAGNOSTICS=1 /Applications/CodeHerd.app/Contents/MacOS/CodeHerd
+```
+
+The log is written to `diagnostics.log` in the app-data folder (**Help → Open
+Diagnostics Folder**). To stop recording, remove the variable — `setx
+CODEHERD_DIAGNOSTICS ""` on Windows — and restart CodeHerd.
+
+`--pty-debug` is a separate, developer-only switch that captures **every byte
+the terminal shows**, including prompts and any secrets on screen. It is not
+needed for the above and should not be left on.
+
 ## Updates
 
 CodeHerd checks GitHub for new releases on startup and shows a notification —

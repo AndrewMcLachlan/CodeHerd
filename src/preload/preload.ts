@@ -10,8 +10,11 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.invoke(IPC.TAB_CLOSE, { tabId }),
   resizeTab: (tabId: string, cols: number, rows: number): Promise<void> =>
     ipcRenderer.invoke(IPC.TAB_RESIZE, { tabId, cols, rows }),
+  // sentAt is stamped here rather than in the renderer so every existing caller gets
+  // it for free. Main logs the delta when diagnostics are on, which distinguishes a
+  // blocked main process from input that reached the PTY promptly.
   inputToTab: (tabId: string, data: string): Promise<void> =>
-    ipcRenderer.invoke(IPC.TAB_INPUT, { tabId, data }),
+    ipcRenderer.invoke(IPC.TAB_INPUT, { tabId, data, sentAt: Date.now() }),
   setTabColor: (tabId: string, color: string | null): Promise<void> =>
     ipcRenderer.invoke(IPC.TAB_SET_COLOR, { tabId, color }),
   getAllTabs: (): Promise<TabState[]> =>
