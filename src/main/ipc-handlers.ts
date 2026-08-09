@@ -17,13 +17,7 @@ import { detectCodexAttention, detectStatus } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
 import { CodexCommandTracker } from './codex-command-tracker';
 import { normalizeTabColor } from '../shared/tab-colors';
-import {
-  isPtyDebugEnabled,
-  getDiagnostics,
-  describeInput,
-  startDiagnostics,
-  stopDiagnostics,
-} from './diagnostics';
+import { isPtyDebugEnabled, getDiagnostics, describeInput } from './diagnostics';
 import { normalizeFolder, selectTabForHistoryRollforward } from './history-attribution';
 import { openExternal, routeLinksToBrowser } from './external-links';
 
@@ -647,13 +641,6 @@ export function registerIpcHandlers(
     stateManager.setPreferences(prefs);
     stateManager.save();
     safeSend('preferences:changed', prefs);
-
-    // Take effect immediately: the fault being chased is intermittent, so making the
-    // user restart to arm the recorder invites missing the next occurrence.
-    if (prefs.diagnosticLogging !== oldPrefs.diagnosticLogging) {
-      if (prefs.diagnosticLogging) startDiagnostics(app.getPath('userData'));
-      else stopDiagnostics();
-    }
 
     if (
       prefs.newTabShortcut !== oldPrefs.newTabShortcut

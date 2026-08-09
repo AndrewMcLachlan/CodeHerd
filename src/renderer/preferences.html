@@ -408,15 +408,6 @@
             <input type="checkbox" id="warn-close" checked>
           </div>
         </div>
-        <div class="setting-row">
-          <div class="setting-copy">
-            <label for="diagnostic-logging">Record diagnostic log</label>
-            <span class="hint">Records timing only — event-loop stalls, how long keystrokes waited, clipboard results. Never records what you type. Leave on to capture an intermittent fault, then send diagnostics.log from Help &rarr; Open Diagnostics Folder.</span>
-          </div>
-          <div class="checkbox-control">
-            <input type="checkbox" id="diagnostic-logging">
-          </div>
-        </div>
       </div>
     </section>
 
@@ -450,7 +441,6 @@
     document.documentElement.dataset.theme = resolvedTheme;
 
     const warnClose = document.getElementById('warn-close');
-    const diagnosticLogging = document.getElementById('diagnostic-logging');
     const fontSelect = document.getElementById('font-select');
     const customFontRow = document.getElementById('custom-font-row');
     const customFont = document.getElementById('custom-font');
@@ -710,7 +700,6 @@
       window.preferencesAPI.getAvailableAgents(),
     ]).then(([prefs, agents]) => {
       warnClose.checked = prefs.warnBeforeClosingTabs;
-      diagnosticLogging.checked = prefs.diagnosticLogging === true;
       themeSelect.value = prefs.theme || 'dark';
       fontSizeInput.value = String(normalizeFontSize(prefs.fontSize));
       terminalForeground = validColour(prefs.terminalForeground) ? prefs.terminalForeground.toLowerCase() : '';
@@ -736,7 +725,6 @@
     document.getElementById('save-btn').addEventListener('click', () => {
       window.preferencesAPI.savePreferences({
         warnBeforeClosingTabs: warnClose.checked,
-        diagnosticLogging: diagnosticLogging.checked,
         fontFamily: selectedFontFamily(),
         fontSize: normalizeFontSize(fontSizeInput.value),
         terminalForeground,

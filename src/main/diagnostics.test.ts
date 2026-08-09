@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeInput, isPtyDebugEnabled } from './diagnostics';
+import { describeInput, isDiagnosticsEnabled, isPtyDebugEnabled } from './diagnostics';
 
 describe('describeInput', () => {
   it('keeps arrow keys intact — they are the point of a latency trace', () => {
@@ -52,6 +52,30 @@ describe('describeInput', () => {
 
   it('renders an unnamed control character by code', () => {
     expect(describeInput('\x01')).toBe('<0x01>');
+  });
+});
+
+describe('isDiagnosticsEnabled', () => {
+  it('is off unless asked for, so ordinary launches record nothing', () => {
+    expect(isDiagnosticsEnabled({}, [])).toBe(false);
+    expect(isDiagnosticsEnabled({}, ['--live-state'])).toBe(false);
+  });
+
+  it('honours the environment variable and the flag', () => {
+    expect(isDiagnosticsEnabled({ CODEHERD_DIAGNOSTICS: '1' }, [])).toBe(true);
+    expect(isDiagnosticsEnabled({}, ['--diagnostics'])).toBe(true);
+  });
+
+  it('treats 0 and false as off', () => {
+    expect(isDiagnosticsEnabled({ CODEHERD_DIAGNOSTICS: '0' }, [])).toBe(false);
+    expect(isDiagnosticsEnabled({ CODEHERD_DIAGNOSTICS: 'false' }, [])).toBe(false);
+  });
+
+  it('is independent of raw PTY capture', () => {
+    // Raw capture records every byte the terminal shows; the timeline does not.
+    // One must not imply the other in this direction.
+    expect(isDiagnosticsEnabled({ CODEHERD_PTY_DEBUG: '1' }, [])).toBe(false);
+    expect(isPtyDebugEnabled({ CODEHERD_DIAGNOSTICS: '1' }, [])).toBe(false);
   });
 });
 

@@ -31,7 +31,6 @@ export const DEFAULT_PREFERENCES = {
   tabSwitchMode: 'mru' as const,
   newTabShortcut: 'Ctrl+T' as const,
   defaultAgent: 'claude' as const,
-  diagnosticLogging: false,
 };
 
 export const DEFAULT_APP_STATE = {

@@ -9,7 +9,12 @@ import { routeLinksToBrowser } from './external-links';
 import { buildAppMenu } from './menu';
 import { detectAvailableAgents } from './agent-detection';
 import { checkForUpdate } from './update-checker';
-import { cleanPtyDebugLogs, isPtyDebugEnabled, startDiagnostics } from './diagnostics';
+import {
+  cleanPtyDebugLogs,
+  isPtyDebugEnabled,
+  isDiagnosticsEnabled,
+  startDiagnostics,
+} from './diagnostics';
 import { IPC } from '../shared/ipc-channels';
 import { STATE_DIR } from '../shared/constants';
 import { handleSquirrelEvent } from './squirrel-startup';
@@ -209,9 +214,8 @@ app.whenReady().then(() => {
   }
 
   // Arm the recorder before any window exists, so a fault during startup is captured
-  // too. The preference persists, which is the point: the fault is intermittent and
-  // has to be recorded on the run where it happens, not switched on afterwards.
-  if (stateManager.getPreferences().diagnosticLogging || isPtyDebugEnabled()) {
+  // too. Raw PTY debugging implies wanting the timeline alongside it.
+  if (isDiagnosticsEnabled() || isPtyDebugEnabled()) {
     startDiagnostics(app.getPath('userData'));
   }
 

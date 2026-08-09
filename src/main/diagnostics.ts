@@ -18,6 +18,25 @@ export function isPtyDebugEnabled(
   return argv.includes('--pty-debug');
 }
 
+/**
+ * Whether to record the diagnostics timeline: set CODEHERD_DIAGNOSTICS=1 or pass
+ * --diagnostics.
+ *
+ * Deliberately not a preference. This exists for chasing an intermittent fault, and
+ * a setting for that in everyone's Preferences window is clutter for the people who
+ * will never use it. Prefer the environment variable on Windows: shortcut arguments
+ * are lost when Squirrel recreates the Start Menu shortcut on update, a user
+ * environment variable is not.
+ */
+export function isDiagnosticsEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+  argv: readonly string[] = process.argv,
+): boolean {
+  const value = env.CODEHERD_DIAGNOSTICS;
+  if (value && value !== '0' && value.toLowerCase() !== 'false') return true;
+  return argv.includes('--diagnostics');
+}
+
 const CONTROL_NAMES: Record<number, string> = {
   0x03: 'ETX', 0x04: 'EOT', 0x07: 'BEL', 0x08: 'BS', 0x09: 'TAB',
   0x0a: 'LF', 0x0d: 'CR', 0x1b: 'ESC', 0x7f: 'DEL',
@@ -96,11 +115,6 @@ let active: Diagnostics | null = null;
 /** The running diagnostics logger, or null when instrumentation is off. */
 export function getDiagnostics(): Diagnostics | null {
   return active;
-}
-
-/** Whether diagnostics are currently recording. */
-export function isDiagnosticsRunning(): boolean {
-  return active !== null;
 }
 
 export function startDiagnostics(
@@ -210,11 +224,6 @@ export function startDiagnostics(
     },
   };
   return active;
-}
-
-/** Stop recording, if running. Safe to call when already stopped. */
-export function stopDiagnostics(): void {
-  active?.stop();
 }
 
 /**
