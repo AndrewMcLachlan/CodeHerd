@@ -743,7 +743,9 @@ body {
   visibility: hidden;
 }
 
-/* Running: animated braille spinner (matches Claude Code's ⠂ ⠐ pattern) */
+/* Running: CodeHerd's own braille spinner. Deliberately not a copy of any agent's
+   spinner — this same indicator serves Codex tabs, and Claude Code has already
+   changed its frames once (braille to ◐/◑), which is not a thing to track here. */
 .tab.running .tab-label::before {
   content: '⠂';
   display: block;
