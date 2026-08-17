@@ -16,6 +16,9 @@ export class StatusBar {
   private titleEl: HTMLElement;
   private modelEl: HTMLElement;
   private contextEl: HTMLElement;
+  private diagnosticsEl: HTMLElement;
+  /** Set once at startup; the badge is a mode indicator, not per-tab state. */
+  private diagnosticsShown = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private currentFolder: string | null = null;
   private currentTabId: TabId | null = null;
@@ -35,6 +38,23 @@ export class StatusBar {
     this.titleEl = document.getElementById('status-title')!;
     this.modelEl = document.getElementById('status-model')!;
     this.contextEl = document.getElementById('status-context')!;
+    this.diagnosticsEl = document.getElementById('status-diagnostics')!;
+  }
+
+  /**
+   * Show the badge marking this run as recording diagnostics. Nothing else says so
+   * — the switch is a launch flag, and a run left recording for days should not be
+   * something you have to remember.
+   */
+  showDiagnostics(logPath: string): void {
+    this.diagnosticsShown = true;
+    this.diagnosticsEl.title = `Recording diagnostics to ${logPath}\nClick to open the folder`;
+    this.diagnosticsEl.classList.remove('hidden');
+    this.element.classList.remove('hidden');
+  }
+
+  onDiagnosticsClick(handler: () => void): void {
+    this.diagnosticsEl.addEventListener('click', handler);
   }
 
   setTerminalTitle(tabId: TabId, title: string): void {
@@ -49,7 +69,16 @@ export class StatusBar {
 
   async update(folder: string | null, activeTabId: TabId | null, meta?: StatusMeta): Promise<void> {
     if (!folder) {
-      this.element.classList.add('hidden');
+      // With no tab there is nothing to report — but the diagnostics badge outlives
+      // the tabs, so empty the bar rather than hiding it when one is on show.
+      this.currentTabId = null;
+      this.currentFolder = null;
+      this.folderEl.textContent = '';
+      this.folderEl.removeAttribute('title');
+      this.titleEl.classList.add('hidden');
+      this.clearGit();
+      this.applyMeta(undefined);
+      this.element.classList.toggle('hidden', !this.diagnosticsShown);
       this.stopPolling();
       return;
     }

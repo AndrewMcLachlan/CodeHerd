@@ -101,8 +101,8 @@ State survives upgrades because it lives outside the install location:
   last-known-good backup)
 - The per-OS app-data folder above — window state and any opt-in debug logs
 
-**Help → Open Diagnostics Folder** inside the app opens the app-data folder
-directly.
+While a diagnostic log is being recorded, **Help → Open Diagnostics Folder**
+inside the app opens the app-data folder directly; otherwise use the path above.
 
 ## Recording a diagnostic log
 
@@ -136,9 +136,13 @@ shortcut each time it updates the app.
 CODEHERD_DIAGNOSTICS=1 /Applications/CodeHerd.app/Contents/MacOS/CodeHerd
 ```
 
+While recording, a **Diagnostics** badge appears at the left of the status bar —
+click it to open the folder holding the log. The badge is the only sign the mode
+is on, which matters when a run is left recording for days.
+
 The log is written to `diagnostics.log` in the app-data folder (**Help → Open
-Diagnostics Folder**). To stop recording, remove the variable — `setx
-CODEHERD_DIAGNOSTICS ""` on Windows — and restart CodeHerd.
+Diagnostics Folder**, shown only while recording). To stop recording, remove the
+variable — `setx CODEHERD_DIAGNOSTICS ""` on Windows — and restart CodeHerd.
 
 `--pty-debug` is a separate, developer-only switch that captures **every byte
 the terminal shows**, including prompts and any secrets on screen. It is not

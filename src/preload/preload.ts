@@ -124,4 +124,5 @@ contextBridge.exposeInMainWorld('codeherd', {
   getResolvedTheme: (): Promise<string> =>
     ipcRenderer.invoke(IPC.THEME_GET_RESOLVED),
   isDev: !ipcRenderer.sendSync('app:is-packaged'),
+  diagnostics: ipcRenderer.sendSync('app:diagnostics') as { recording: boolean; logPath: string },
 });

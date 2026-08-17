@@ -978,6 +978,45 @@ body {
   color: var(--danger);
 }
 
+/* Diagnostics: a mode, not a reading — filled so it doesn't scan as another
+   status item, and dimmed until hover so it can sit there for days unread. */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  margin-right: 6px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--orange) 18%, transparent);
+  color: var(--orange);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.status-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--orange);
+  animation: pulse-dot 2.5s ease-in-out infinite;
+}
+
+.status-badge:hover,
+.status-badge:focus-visible {
+  opacity: 1;
+  background: color-mix(in srgb, var(--orange) 28%, transparent);
+}
+
+.status-badge.hidden {
+  display: none;
+}
+
 #status-title {
   color: var(--text-muted);
 }
