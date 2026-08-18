@@ -110,11 +110,25 @@ export interface Diagnostics {
 /** Rotate at 5 MB, keeping one previous file — enough history, bounded at ~10 MB. */
 const MAX_LOG_BYTES = 5 * 1024 * 1024;
 
+/** Where the timeline is written. Shared so the UI can point at the real file. */
+export function diagnosticsLogPath(logDir: string): string {
+  return path.join(logDir, 'diagnostics.log');
+}
+
 let active: Diagnostics | null = null;
 
 /** The running diagnostics logger, or null when instrumentation is off. */
 export function getDiagnostics(): Diagnostics | null {
   return active;
+}
+
+/**
+ * Whether the recorder is actually running — the honest answer for the UI, which
+ * shows a badge and a folder shortcut only while there is a log being written.
+ * Not the same as isDiagnosticsEnabled(): --pty-debug arms the recorder too.
+ */
+export function isDiagnosticsRecording(): boolean {
+  return active !== null;
 }
 
 export function startDiagnostics(
@@ -134,7 +148,7 @@ export function startDiagnostics(
     // fall through — the stream error handler below reports it
   }
 
-  const logPath = path.join(logDir, 'diagnostics.log');
+  const logPath = diagnosticsLogPath(logDir);
   const previousPath = `${logPath}.1`;
   let stream: fs.WriteStream;
   let written = 0;

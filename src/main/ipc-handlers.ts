@@ -17,7 +17,13 @@ import { detectCodexAttention, detectStatus } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
 import { CodexCommandTracker } from './codex-command-tracker';
 import { normalizeTabColor } from '../shared/tab-colors';
-import { isPtyDebugEnabled, getDiagnostics, describeInput } from './diagnostics';
+import {
+  isPtyDebugEnabled,
+  getDiagnostics,
+  describeInput,
+  diagnosticsLogPath,
+  isDiagnosticsRecording,
+} from './diagnostics';
 import { normalizeFolder, selectTabForHistoryRollforward } from './history-attribution';
 import { openExternal, routeLinksToBrowser } from './external-links';
 
@@ -596,6 +602,16 @@ export function registerIpcHandlers(
 
   ipcMain.on('app:is-packaged', (event) => {
     event.returnValue = app.isPackaged;
+  });
+
+  // Read once at startup by the renderer, which shows the diagnostics badge and the
+  // "Open Diagnostics Folder" entry only while a log is actually being recorded.
+  // Recording can't be turned on mid-run, so a sync read at load is enough.
+  ipcMain.on('app:diagnostics', (event) => {
+    event.returnValue = {
+      recording: isDiagnosticsRecording(),
+      logPath: diagnosticsLogPath(app.getPath('userData')),
+    };
   });
 
   ipcMain.handle(IPC.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {

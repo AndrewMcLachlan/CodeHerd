@@ -3,6 +3,7 @@ import { IPC } from '../shared/ipc-channels';
 import type { AgentAvailability, AgentType, NewTabShortcut, RecentlyClosedTab } from '../shared/types';
 import { getNewTabMenuOptions } from '../shared/agents';
 import { DEFAULT_NEW_TAB_SHORTCUT, toAccelerator } from '../shared/shortcut';
+import { isDiagnosticsRecording } from './diagnostics';
 
 export function buildAppMenu(
   getMainWindow: () => BrowserWindow | null,
@@ -122,14 +123,15 @@ export function buildAppMenu(
             getMainWindow()?.webContents.send('menu:about');
           },
         },
-        {
-          // Where state.json, its backups, and any opt-in debug logs live —
-          // the folder to zip up when reporting a problem.
+        // Only while recording: the shortcut exists to reach the log just written,
+        // so it is clutter in a normal run. The same folder is still documented in
+        // docs/INSTALL.md for anyone zipping up state.json to report a problem.
+        ...(isDiagnosticsRecording() ? [{
           label: 'Open Diagnostics Folder',
           click: () => {
             void shell.openPath(app.getPath('userData'));
           },
-        },
+        } as Electron.MenuItemConstructorOptions] : []),
       ],
     },
   ];

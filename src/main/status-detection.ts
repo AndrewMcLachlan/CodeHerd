@@ -38,11 +38,23 @@ export function detectCodexAttention(data: string): boolean {
 }
 
 /**
- * Detects whether the OSC title indicates Claude Code is busy (spinner).
- * Braille characters (U+2800–U+28FF) are used as spinner frames.
+ * Spinner frames Claude Code puts at the front of the OSC title while a turn runs.
+ *
+ * Two generations, both matched so an older CLI keeps working:
+ *   U+2800-U+28FF  braille, used by earlier releases
+ *   U+25D0-U+25D3  the circle quartet, used by current releases
+ *
+ * An idle title carries U+2733 instead, deliberately outside both ranges — and the
+ * reason a leading glyph can't simply be taken to mean "busy":
+ *   "◐ Count numbers from 1 to 40"  running
+ *   "✳ Count numbers from 1 to 40"  finished, waiting for input
  */
+// Escapes, not literals: U+2800 is a blank braille cell and invisible in source.
+const SPINNER_FRAME = /^[\u2800-\u28FF\u25D0-\u25D3]/;
+
+/** Detects whether the OSC title indicates Claude Code is busy (spinner). */
 export function isBusyTitle(title: string): boolean {
-  return /^[\u2800-\u28FF]/.test(title);
+  return SPINNER_FRAME.test(title);
 }
 
 /**

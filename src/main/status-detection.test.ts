@@ -93,10 +93,39 @@ describe('isBusyTitle', () => {
     expect(isBusyTitle('⠙ Running tools')).toBe(true);
   });
 
+  // Captured from a real session: current Claude Code alternates ◐ and ◑ for the
+  // whole turn, then swaps the glyph for ✳ the moment it finishes.
+  it('treats a circle spinner frame as busy', () => {
+    expect(isBusyTitle('◐ Count numbers from 1 to 40')).toBe(true);
+    expect(isBusyTitle('◑ Count numbers from 1 to 40')).toBe(true);
+    expect(isBusyTitle('◒ Count numbers from 1 to 40')).toBe(true);
+    expect(isBusyTitle('◓ Count numbers from 1 to 40')).toBe(true);
+    expect(isBusyTitle('◐ Claude Code')).toBe(true);
+  });
+
   it('treats other titles as not busy', () => {
     expect(isBusyTitle('✳ CodeHerd')).toBe(false);
     expect(isBusyTitle('Claude')).toBe(false);
     expect(isBusyTitle('')).toBe(false);
+  });
+
+  // The idle marker sits next to the spinner glyphs in the same visual role, so
+  // getting this wrong leaves every finished turn stuck as "running".
+  it('treats the idle marker as not busy, task name or not', () => {
+    expect(isBusyTitle('✳ Claude Code')).toBe(false);
+    expect(isBusyTitle('✳ Count numbers from 1 to 40')).toBe(false);
+  });
+});
+
+describe('detectStatus over a real turn', () => {
+  // The OSC titles one session emitted, in order, from startup to turn end.
+  const osc = (title: string) => `${E}]0;${title}\x07`;
+
+  it('runs on the spinner and settles to waiting when the glyph changes', () => {
+    expect(detectStatus(osc('✳ Claude Code'), 'stopped')).toBe('waiting');
+    expect(detectStatus(osc('◐ Claude Code'), 'waiting')).toBe('running');
+    expect(detectStatus(osc('◑ Count numbers from 1 to 40'), 'running')).toBeNull();
+    expect(detectStatus(osc('✳ Count numbers from 1 to 40'), 'running')).toBe('waiting');
   });
 });
 

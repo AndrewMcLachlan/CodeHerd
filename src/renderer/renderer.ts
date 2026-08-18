@@ -57,6 +57,7 @@ declare global {
       onThemeChanged: (cb: (resolvedTheme: string) => void) => () => void;
       getResolvedTheme: () => Promise<string>;
       isDev: boolean;
+      diagnostics: { recording: boolean; logPath: string };
     };
   }
 }
@@ -346,13 +347,21 @@ async function init(): Promise<void> {
       { separator: true },
       { label: 'Preferences', shortcut: `${mod},`, action: () => window.codeherd.menuAction('preferences') },
       { label: 'About CodeHerd', action: () => window.codeherd.menuAction('about') },
-      { label: 'Open Diagnostics Folder', action: () => window.codeherd.menuAction('openDiagnostics') },
+      // Only while recording — see the same gate on the native menu in menu.ts.
+      ...(window.codeherd.diagnostics.recording ? [
+        { label: 'Open Diagnostics Folder', action: () => window.codeherd.menuAction('openDiagnostics') } as MenuItem,
+      ] : []),
       { separator: true },
       { label: 'Exit', shortcut: 'Alt+F4', action: () => window.codeherd.menuAction('quit') },
     );
 
     return items;
   });
+
+  if (window.codeherd.diagnostics.recording) {
+    statusBar.showDiagnostics(window.codeherd.diagnostics.logPath);
+    statusBar.onDiagnosticsClick(() => window.codeherd.menuAction('openDiagnostics'));
+  }
 
   // When terminal title changes, update status bar
   terminalManager.setOnTitleChange((tabId, title) => {
