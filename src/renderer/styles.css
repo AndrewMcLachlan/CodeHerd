@@ -206,7 +206,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 6px 0 12px;
+  padding: 0 12px;
   min-width: 100px;
   max-width: 220px;
   height: 32px;
@@ -339,7 +339,15 @@ body {
   opacity: 0.92;
 }
 
+/* Out of the flow on purpose. Hiding it with opacity alone leaves a 20px slot
+   behind, and at the end of the tab strip that empty slot reads as a gap before the
+   + button — 36px against the 10px you get when the button is showing. The label
+   yields room only while the button is visible, so tab width stays put. */
 .tab-close {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   background: none;
   border: none;
   color: var(--text-muted);
@@ -360,6 +368,11 @@ body {
 .tab:hover .tab-close,
 .tab.active .tab-close {
   opacity: 1;
+}
+
+.tab:hover .tab-label,
+.tab.active .tab-label {
+  padding-right: 24px;
 }
 
 .tab-close:hover {
