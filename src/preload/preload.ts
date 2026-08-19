@@ -79,6 +79,11 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.on(IPC.TAB_COLOR_PICKER, listener);
     return () => { ipcRenderer.removeListener(IPC.TAB_COLOR_PICKER, listener); };
   },
+  onDiagnosticsStarted: (callback: (msg: { logPath: string }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, msg: { logPath: string }) => callback(msg);
+    ipcRenderer.on(IPC.DIAGNOSTICS_STARTED, listener);
+    return () => { ipcRenderer.removeListener(IPC.DIAGNOSTICS_STARTED, listener); };
+  },
   onUpdateAvailable: (callback: (info: UpdateInfo) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, info: UpdateInfo) => callback(info);
     ipcRenderer.on(IPC.UPDATE_AVAILABLE, listener);

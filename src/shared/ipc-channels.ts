@@ -36,4 +36,7 @@ export const IPC = {
   THEME_CHANGED: 'theme:changed',
   MENU_RESTORE_RECENT: 'menu:restore-recent',
   UPDATE_AVAILABLE: 'update:available',
+
+  // Recording began after startup, via a --diagnostics relaunch at a running app
+  DIAGNOSTICS_STARTED: 'diagnostics:started',
 } as const;

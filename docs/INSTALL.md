@@ -126,9 +126,11 @@ so it is safe to leave running for as long as it takes for the fault to recur.
 setx CODEHERD_DIAGNOSTICS 1
 ```
 
-Prefer this over adding `--diagnostics` to the Start Menu shortcut. Shortcut
-arguments do not survive an upgrade, because the installer recreates the
-shortcut each time it updates the app.
+A shortcut carrying `--diagnostics` also works, including while CodeHerd is
+already running: only one copy of CodeHerd runs at a time, so the flag is handed
+to the copy already open and recording starts there. Note that shortcut arguments
+do not survive an upgrade — the installer recreates the shortcut each time it
+updates the app — so the environment variable is the setting that sticks.
 
 **macOS and Linux** — launch with the flag, or export the variable:
 

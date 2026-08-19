@@ -77,6 +77,16 @@ describe('isDiagnosticsEnabled', () => {
     expect(isDiagnosticsEnabled({ CODEHERD_PTY_DEBUG: '1' }, [])).toBe(false);
     expect(isPtyDebugEnabled({ CODEHERD_DIAGNOSTICS: '1' }, [])).toBe(false);
   });
+
+  // A --diagnostics shortcut clicked at an already-running app cannot start a second
+  // copy: Electron hands its argv to the live instance instead. Only argv crosses
+  // over, so the flag has to be readable with no environment to fall back on.
+  it('reads the flag out of a second-instance argv', () => {
+    const exe = 'C:\Users\me\AppData\Local\codeherd\app-1.0.0\codeherd.exe';
+    expect(isDiagnosticsEnabled({}, [exe, '--diagnostics'])).toBe(true);
+    expect(isDiagnosticsEnabled({}, [exe])).toBe(false);
+    expect(isDiagnosticsEnabled({}, [exe, '--squirrel-firstrun'])).toBe(false);
+  });
 });
 
 describe('isPtyDebugEnabled', () => {
