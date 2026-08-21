@@ -42,6 +42,7 @@ declare global {
       openExternal: (url: string) => Promise<void>;
       dismissUpdate: (version: string) => Promise<void>;
       onUpdateAvailable: (cb: (info: UpdateInfo) => void) => () => void;
+      onDiagnosticsStarted: (cb: (msg: { logPath: string }) => void) => () => void;
       onPtyData: (cb: (msg: PtyDataMessage) => void) => () => void;
       onPtyExit: (cb: (msg: { tabId: string; exitCode: number }) => void) => () => void;
       onTabStatus: (cb: (msg: { tabId: string; status: string }) => void) => () => void;
@@ -348,7 +349,7 @@ async function init(): Promise<void> {
       { label: 'Preferences', shortcut: `${mod},`, action: () => window.codeherd.menuAction('preferences') },
       { label: 'About CodeHerd', action: () => window.codeherd.menuAction('about') },
       // Only while recording — see the same gate on the native menu in menu.ts.
-      ...(window.codeherd.diagnostics.recording ? [
+      ...(diagnosticsRecording ? [
         { label: 'Open Diagnostics Folder', action: () => window.codeherd.menuAction('openDiagnostics') } as MenuItem,
       ] : []),
       { separator: true },
@@ -358,10 +359,18 @@ async function init(): Promise<void> {
     return items;
   });
 
-  if (window.codeherd.diagnostics.recording) {
+  // Recording usually starts before the window exists, but a --diagnostics relaunch
+  // at an already-running app turns it on mid-session, so this has to be mutable:
+  // the in-app menu reads it each time it opens.
+  let diagnosticsRecording = window.codeherd.diagnostics.recording;
+  statusBar.onDiagnosticsClick(() => window.codeherd.menuAction('openDiagnostics'));
+  if (diagnosticsRecording) {
     statusBar.showDiagnostics(window.codeherd.diagnostics.logPath);
-    statusBar.onDiagnosticsClick(() => window.codeherd.menuAction('openDiagnostics'));
   }
+  window.codeherd.onDiagnosticsStarted(({ logPath }) => {
+    diagnosticsRecording = true;
+    statusBar.showDiagnostics(logPath);
+  });
 
   // When terminal title changes, update status bar
   terminalManager.setOnTitleChange((tabId, title) => {

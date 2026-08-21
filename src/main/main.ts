@@ -13,6 +13,8 @@ import {
   cleanPtyDebugLogs,
   isPtyDebugEnabled,
   isDiagnosticsEnabled,
+  isDiagnosticsRecording,
+  diagnosticsLogPath,
   startDiagnostics,
 } from './diagnostics';
 import { IPC } from '../shared/ipc-channels';
@@ -38,6 +40,9 @@ if (!app.isPackaged) {
 const useLiveState = app.isPackaged || process.argv.includes('--live-state');
 
 let mainWindow: BrowserWindow | null = null;
+// Tells the UI that recording has begun. Replaced once the menu builder exists;
+// until then a second-instance flag has no UI to update yet.
+let announceDiagnostics: () => void = () => {};
 // Set once the IPC layer is registered. Defaults to an empty list so the close
 // handler can never block a quit on state that doesn't exist yet.
 let getTabs: () => TabState[] = () => [];
@@ -59,10 +64,23 @@ function getThemeColors(resolved: ResolvedTheme) {
 // Enforce single instance (skip in dev to allow running alongside installed app)
 const gotTheLock = app.isPackaged ? app.requestSingleInstanceLock() : true;
 if (!gotTheLock) {
+  // quit() is not immediate: without this guard the losing process still reached
+  // whenReady, armed the diagnostics recorder, and wrote a "started" line into the
+  // shared log moments before exiting — a log that then recorded nothing.
   app.quit();
 }
 
-app.on('second-instance', () => {
+app.on('second-instance', (_event, argv) => {
+  // A shortcut carrying --diagnostics cannot start a second copy: the lock above
+  // sends it here and the new process dies. Honour the flag in the instance that is
+  // actually running, otherwise clicking that shortcut silently does nothing (and
+  // worse, the doomed process wrote a "started" line into the log before exiting).
+  // argv only — the second instance's environment does not reach us.
+  if (isDiagnosticsEnabled({}, argv) && !isDiagnosticsRecording()) {
+    startDiagnostics(app.getPath('userData'));
+    announceDiagnostics();
+  }
+
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
@@ -207,6 +225,10 @@ let isQuitting = false;
 const isStylingMode = process.argv.includes('--styling');
 
 app.whenReady().then(() => {
+  // The losing instance of a single-instance race is on its way out; starting the
+  // recorder or building a window here would only corrupt the real instance's log.
+  if (!gotTheLock) return;
+
   // Older releases wrote raw PTY logs unconditionally; reclaim the space unless
   // the user is actively debugging this run.
   if (!isPtyDebugEnabled()) {
@@ -235,6 +257,17 @@ app.whenReady().then(() => {
       prefs.defaultAgent,
     ));
   };
+  // Recording can begin after startup, when a --diagnostics shortcut is clicked at
+  // an already-running app. Both the badge and the menu entry have to catch up.
+  announceDiagnostics = () => {
+    rebuildMenu();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC.DIAGNOSTICS_STARTED, {
+        logPath: diagnosticsLogPath(app.getPath('userData')),
+      });
+    }
+  };
+
   const ipc = registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting, rebuildMenu);
   getTabs = ipc.getTabs;
   rebuildMenu();
