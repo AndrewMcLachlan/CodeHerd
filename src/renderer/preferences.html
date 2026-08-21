@@ -152,6 +152,12 @@
       color: var(--text-primary);
     }
     #custom-font-row { margin-top: 8px; }
+    #new-tab-folder-row {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+    }
+    #new-tab-folder { flex: 1; min-width: 0; }
     .number-control {
       display: flex;
       align-items: center;
@@ -390,6 +396,22 @@
         </div>
         <div class="setting-row">
           <div class="setting-copy">
+            <label for="new-tab-folder-mode">New tab opens in</label>
+            <span class="hint">Where the folder dialog starts. You can still browse anywhere from there.</span>
+          </div>
+          <div class="setting-control">
+            <select id="new-tab-folder-mode">
+              <option value="last">Last folder I opened</option>
+              <option value="fixed">A specific folder</option>
+            </select>
+            <div id="new-tab-folder-row" style="display:none">
+              <input type="text" id="new-tab-folder" placeholder="No folder chosen" autocomplete="off" spellcheck="false" readonly>
+              <button type="button" id="new-tab-folder-browse">Browse…</button>
+            </div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-copy">
             <label for="tab-switch-select">Ctrl+Tab behaviour</label>
           </div>
           <div class="setting-control">
@@ -449,6 +471,10 @@
     const themeSelect = document.getElementById('theme-select');
     const defaultAgentSelect = document.getElementById('default-agent-select');
     const tabSwitchSelect = document.getElementById('tab-switch-select');
+    const newTabFolderMode = document.getElementById('new-tab-folder-mode');
+    const newTabFolderRow = document.getElementById('new-tab-folder-row');
+    const newTabFolderInput = document.getElementById('new-tab-folder');
+    const newTabFolderBrowse = document.getElementById('new-tab-folder-browse');
     const foregroundInput = document.getElementById('terminal-foreground');
     const backgroundInput = document.getElementById('terminal-background');
     const foregroundValue = document.getElementById('foreground-value');
@@ -715,11 +741,28 @@
       defaultAgentSelect.value = agents[preferredAgent]
         ? preferredAgent
         : (agents.claude ? 'claude' : (agents.codex ? 'codex' : preferredAgent));
+      newTabFolderMode.value = prefs.newTabFolderMode || 'last';
+      newTabFolderInput.value = prefs.newTabFolder || '';
+      syncNewTabFolderControl();
       shortcutValue = prefs.newTabShortcut || DEFAULT_SHORTCUT;
       renderShortcut();
       savedFontFamily = prefs.fontFamily || '';
       syncFontControl();
     });
+    // The path only matters in 'fixed' mode, so it stays out of the way otherwise —
+    // same show/hide idiom as the custom font row above.
+    function syncNewTabFolderControl() {
+      newTabFolderRow.style.display = newTabFolderMode.value === 'fixed' ? 'flex' : 'none';
+    }
+
+    newTabFolderMode.addEventListener('change', syncNewTabFolderControl);
+
+    newTabFolderBrowse.addEventListener('click', () => {
+      window.preferencesAPI.pickFolder().then((folder) => {
+        if (folder) newTabFolderInput.value = folder;
+      });
+    });
+
     loadInstalledFonts();
 
     document.getElementById('save-btn').addEventListener('click', () => {
@@ -731,6 +774,8 @@
         terminalBackground,
         theme: themeSelect.value,
         tabSwitchMode: tabSwitchSelect.value,
+        newTabFolderMode: newTabFolderMode.value,
+        newTabFolder: newTabFolderInput.value,
         newTabShortcut: shortcutValue,
         defaultAgent: defaultAgentSelect.value,
       }).then(() => {
