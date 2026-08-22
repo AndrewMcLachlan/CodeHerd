@@ -106,6 +106,17 @@ export interface UpdateInfo {
   url: string;
 }
 
+/** Why a session list is empty or short, when something is actually wrong. */
+export type SessionProblem = 'store-missing' | 'unreadable' | 'unrecognised-format';
+
+/** A folder's sessions, plus the reason the list is empty when there is one. */
+export interface SessionListing {
+  sessions: AgentSession[];
+  problem: SessionProblem | null;
+  /** Message to show for `problem`, built in main where the CLI version is known. */
+  problemDetail?: string;
+}
+
 export interface AgentSession {
   agent: AgentType;
   sessionId: SessionId;

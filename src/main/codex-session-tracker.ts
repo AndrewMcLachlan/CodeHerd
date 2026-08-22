@@ -6,6 +6,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { isCustomCodexSessionName } from '../shared/agents';
 import type { AgentSession, FolderPath, SessionId } from '../shared/types';
 import { getLoginShellEnv } from './claude-cli';
+import { diagnoseSessionListing } from './session-diagnosis';
+import type { SessionListing } from './session-tracker';
 
 interface CodexThreadRow {
   id: string;
@@ -79,6 +81,25 @@ export class CodexSessionTracker {
     const env = getLoginShellEnv();
     this.codexHome = getEnvValue(env, 'CODEX_HOME') || path.join(os.homedir(), '.codex');
     this.sqliteHome = getEnvValue(env, 'CODEX_SQLITE_HOME') || this.codexHome;
+  }
+
+  /**
+   * Sessions for a folder, plus why the list is empty when it is — so a missing or
+   * unreadable Codex home is distinguishable from a folder you have never used.
+   */
+  async getSessionListingForFolder(folder: FolderPath): Promise<SessionListing> {
+    const sessions = await this.getSessionsForFolder(folder);
+    if (sessions.length > 0) return { sessions, problem: null };
+
+    // Only worth diagnosing when the list came back empty. Both the SQLite database
+    // and the transcript directory are optional individually, but neither present
+    // means Codex has not run — or keeps its history somewhere new.
+    const storeExists = fs.existsSync(path.join(this.codexHome, 'sessions'))
+      || fs.existsSync(this.sqliteHome);
+    return {
+      sessions,
+      problem: diagnoseSessionListing({ storeExists, linesRead: 0, linesParsed: 0, sessions: 0 }),
+    };
   }
 
   async getSessionsForFolder(folder: FolderPath): Promise<AgentSession[]> {

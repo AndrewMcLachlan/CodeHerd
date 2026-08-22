@@ -100,16 +100,27 @@ export class Sidebar {
   async loadSessionsForFolder(folder: string, agent: AgentType): Promise<void> {
     const sequence = ++this.loadSequence;
     this.header.textContent = agent === 'codex' ? 'Codex Sessions' : 'Claude Sessions';
-    const sessions = await window.codeherd.listSessions(folder, agent);
+    const { sessions, problem, problemDetail } = await window.codeherd.listSessions(folder, agent);
     if (sequence !== this.loadSequence) return;
     this.sessionList.innerHTML = '';
 
     if (sessions.length === 0) {
       const empty = document.createElement('div');
-      empty.className = 'session-empty';
-      empty.textContent = 'No sessions found';
+      // An empty list used to say the same thing whether you had never used an agent
+      // here or CodeHerd could no longer read your sessions. Say which.
+      empty.className = problem ? 'session-empty session-problem' : 'session-empty';
+      empty.textContent = problem ? (problemDetail ?? 'Sessions unavailable') : 'No sessions found';
       this.sessionList.appendChild(empty);
       return;
+    }
+
+    if (problem) {
+      // Some sessions came back, but not all of them: say so above the list rather
+      // than letting a partial result pass as the whole picture.
+      const warning = document.createElement('div');
+      warning.className = 'session-empty session-problem';
+      warning.textContent = problemDetail ?? 'Some sessions could not be read';
+      this.sessionList.appendChild(warning);
     }
 
     for (const session of sessions) {

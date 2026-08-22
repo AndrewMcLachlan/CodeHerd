@@ -19,6 +19,14 @@ const registryStub = (live: Map<SessionId, LiveSession> = new Map()) =>
 const tracker = (registry: AgentRegistry = registryStub()) =>
   new SessionTracker(registry, historyFile, projectsDir);
 
+/**
+ * Just the sessions. getSessionsForFolder also reports why a list is empty; the
+ * diagnosis has its own tests in session-diagnosis.test.ts, and these cases are
+ * about which sessions come back.
+ */
+const sessionsFor = async (registry: AgentRegistry, folder: string) =>
+  (await tracker(registry).getSessionsForFolder(folder, 'claude')).sessions;
+
 /** Append a Claude history.jsonl entry. */
 const history = (sessionId: string, display: string, timestamp: number, project = FOLDER) => {
   fs.appendFileSync(historyFile, JSON.stringify({ project, sessionId, display, timestamp }) + '\n');
@@ -48,7 +56,7 @@ afterEach(() => {
 describe('getSessionsForFolder (claude)', () => {
   it('returns an empty list when no history file exists', async () => {
     fs.rmSync(historyFile, { force: true });
-    expect(await tracker().getSessionsForFolder(FOLDER, 'claude')).toEqual([]);
+    expect(await sessionsFor(registryStub(), FOLDER)).toEqual([]);
   });
 
   it('lists sessions for the folder, most recent first', async () => {
@@ -57,7 +65,7 @@ describe('getSessionsForFolder (claude)', () => {
     transcript('s-old');
     transcript('s-new');
 
-    const sessions = await tracker().getSessionsForFolder(FOLDER, 'claude');
+    const sessions = await sessionsFor(registryStub(), FOLDER);
     expect(sessions.map((s) => s.sessionId)).toEqual(['s-new', 's-old']);
     expect(sessions[0]).toMatchObject({ agent: 'claude', lastPrompt: 'second task', project: FOLDER });
   });
@@ -65,14 +73,14 @@ describe('getSessionsForFolder (claude)', () => {
   it('matches folders across slash direction and case', async () => {
     history('s-1', 'task', 1000);
     transcript('s-1');
-    const sessions = await tracker().getSessionsForFolder('k:/dev/apps/sample', 'claude');
+    const sessions = await sessionsFor(registryStub(), 'k:/dev/apps/sample');
     expect(sessions).toHaveLength(1);
   });
 
   it('excludes sessions from other folders', async () => {
     history('s-elsewhere', 'task', 1000, 'K:\\Dev\\Apps\\Other');
     transcript('s-elsewhere', { project: 'K:\\Dev\\Apps\\Other' });
-    expect(await tracker().getSessionsForFolder(FOLDER, 'claude')).toEqual([]);
+    expect(await sessionsFor(registryStub(), FOLDER)).toEqual([]);
   });
 
   it('prefers the last real prompt over trailing slash commands (#70)', async () => {
@@ -81,7 +89,7 @@ describe('getSessionsForFolder (claude)', () => {
     history('s-1', '/exit', 3000);
     transcript('s-1');
 
-    const [session] = await tracker().getSessionsForFolder(FOLDER, 'claude');
+    const [session] = await sessionsFor(registryStub(), FOLDER);
     expect(session.lastPrompt).toBe('do the thing');
     expect(session.timestamp).toBe(3000);
   });
@@ -89,19 +97,19 @@ describe('getSessionsForFolder (claude)', () => {
   it('falls back to a slash command label when no real prompt exists', async () => {
     history('s-1', '/resume', 1000);
     transcript('s-1');
-    const [session] = await tracker().getSessionsForFolder(FOLDER, 'claude');
+    const [session] = await sessionsFor(registryStub(), FOLDER);
     expect(session.lastPrompt).toBe('/resume');
   });
 
   it('drops sessions whose transcript is gone (#70)', async () => {
     history('s-cleaned', 'task', 1000);
-    expect(await tracker().getSessionsForFolder(FOLDER, 'claude')).toEqual([]);
+    expect(await sessionsFor(registryStub(), FOLDER)).toEqual([]);
   });
 
   it('drops sessions whose transcript holds no conversation (#70)', async () => {
     history('s-metadata-only', 'task', 1000);
     transcript('s-metadata-only', { resumable: false });
-    expect(await tracker().getSessionsForFolder(FOLDER, 'claude')).toEqual([]);
+    expect(await sessionsFor(registryStub(), FOLDER)).toEqual([]);
   });
 
   it('skips malformed history lines without losing surrounding sessions', async () => {
@@ -110,7 +118,7 @@ describe('getSessionsForFolder (claude)', () => {
     history('s-2', 'other task', 2000);
     transcript('s-1');
     transcript('s-2');
-    expect(await tracker().getSessionsForFolder(FOLDER, 'claude')).toHaveLength(2);
+    expect(await sessionsFor(registryStub(), FOLDER)).toHaveLength(2);
   });
 
   it('tags sessions that belong to live background agents', async () => {
@@ -123,7 +131,7 @@ describe('getSessionsForFolder (claude)', () => {
       ['s-fg', { sessionId: 's-fg', kind: 'interactive', pid: 456, cwd: FOLDER }],
     ]);
 
-    const sessions = await tracker(registryStub(live)).getSessionsForFolder(FOLDER, 'claude');
+    const sessions = await sessionsFor(registryStub(live), FOLDER);
     expect(sessions.find((s) => s.sessionId === 's-bg')?.agentId).toBe('agent-7');
     expect(sessions.find((s) => s.sessionId === 's-fg')?.agentId).toBeUndefined();
   });

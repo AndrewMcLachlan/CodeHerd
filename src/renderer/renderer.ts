@@ -1,4 +1,4 @@
-import type { AgentAvailability, AgentSession, AgentType, PtyDataMessage, TabState, AppState, GitInfo, Preferences, NewTabShortcut, RecentlyClosedTab, TabColorPickerMessage, TabMetadataMessage, TabSessionMessage, UpdateInfo } from '../shared/types';
+import type { AgentAvailability, AgentSession, SessionListing, AgentType, PtyDataMessage, TabState, AppState, GitInfo, Preferences, NewTabShortcut, RecentlyClosedTab, TabColorPickerMessage, TabMetadataMessage, TabSessionMessage, UpdateInfo } from '../shared/types';
 import { DEFAULT_NEW_TAB_SHORTCUT, formatShortcut, matchesShortcut } from '../shared/shortcut';
 import { DEFAULT_TERMINAL_FONT_SIZE_POINTS, TerminalManager } from './terminal-manager';
 import { TabManager } from './tab-manager';
@@ -28,7 +28,7 @@ declare global {
       setTabColor: (tabId: string, color: string | null) => Promise<void>;
       reorderTabs: (tabIds: string[]) => Promise<void>;
       getAllTabs: () => Promise<TabState[]>;
-      listSessions: (folder: string, agent: AgentType) => Promise<AgentSession[]>;
+      listSessions: (folder: string, agent: AgentType) => Promise<SessionListing>;
       getAvailableAgents: () => Promise<AgentAvailability>;
       pickFolder: () => Promise<string | null>;
       getState: () => Promise<AppState>;
