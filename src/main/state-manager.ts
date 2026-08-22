@@ -147,6 +147,11 @@ export class StateManager {
     this.state.dismissedUpdateVersion = version;
   }
 
+  /** Remember where the newest session was opened, for the new-tab dialog. */
+  setLastFolder(folder: string): void {
+    this.state.lastFolder = folder;
+  }
+
   getPreferences(): Preferences {
     return this.state.preferences ?? DEFAULT_PREFERENCES;
   }

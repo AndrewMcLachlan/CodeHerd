@@ -62,7 +62,7 @@ export class TabManager {
     return getNewTabMenuOptions(this.availableAgents, this.defaultAgent);
   }
 
-  async createTab(folder: string, agent: AgentType, resumeSessionId?: string, label?: string): Promise<TabState> {
+  async createTab(folder: string, agent: AgentType, resumeSessionId?: string, label?: string, restored = false): Promise<TabState> {
     // Generate the tab ID here so the terminal is ready before the PTY spawns
     const tabId = crypto.randomUUID();
 
@@ -83,6 +83,7 @@ export class TabManager {
         folder,
         resumeSessionId,
         label,
+        restored,
         cols: dims?.cols,
         rows: dims?.rows,
       });

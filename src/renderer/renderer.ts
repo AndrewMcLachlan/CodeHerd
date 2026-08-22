@@ -21,7 +21,7 @@ const toStatusMeta = (t: TabState): StatusMeta => ({
 declare global {
   interface Window {
     codeherd: {
-      createTab: (request: { tabId: string; agent: AgentType; folder: string; resumeSessionId?: string; label?: string; cols?: number; rows?: number }) => Promise<TabState>;
+      createTab: (request: { tabId: string; agent: AgentType; folder: string; resumeSessionId?: string; label?: string; restored?: boolean; cols?: number; rows?: number }) => Promise<TabState>;
       closeTab: (tabId: string) => Promise<void>;
       resizeTab: (tabId: string, cols: number, rows: number) => Promise<void>;
       inputToTab: (tabId: string, data: string) => Promise<void>;
@@ -555,7 +555,7 @@ async function init(): Promise<void> {
   if (tabsToRestore.length > 0) {
     for (const savedTab of tabsToRestore) {
       try {
-        await tabManager.createTab(savedTab.launchFolder, savedTab.agent, savedTab.sessionId, savedTab.label);
+        await tabManager.createTab(savedTab.launchFolder, savedTab.agent, savedTab.sessionId, savedTab.label, true);
       } catch (err) {
         console.error('Failed to restore tab:', savedTab.label, err);
       }

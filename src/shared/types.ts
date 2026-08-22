@@ -65,7 +65,13 @@ export interface Preferences {
   tabSwitchMode: TabSwitchMode;
   newTabShortcut: NewTabShortcut;
   defaultAgent: AgentType;
+  /** Where the new-tab folder dialog opens: your last session's folder, or a pinned one. */
+  newTabFolderMode: NewTabFolderMode;
+  /** The pinned folder, used when newTabFolderMode is 'fixed'. Empty defers to the OS. */
+  newTabFolder: string;
 }
+
+export type NewTabFolderMode = 'last' | 'fixed';
 
 export interface AppState {
   version: 1;
@@ -88,6 +94,8 @@ export interface AppState {
   preferences: Preferences;
   /** Latest release version the user dismissed the update notification for. */
   dismissedUpdateVersion: string | null;
+  /** Folder of the most recently opened session, so the dialog can reopen there. */
+  lastFolder: string | null;
 }
 
 /** A newer release discovered on GitHub. */
@@ -131,6 +139,11 @@ export interface TabCreateRequest {
   resumeSessionId?: SessionId;
   /** Saved CodeHerd label to preserve while restoring an open tab. */
   label?: string;
+  /**
+   * Set only when replaying tabs saved from the last run. Restoring is not the user
+   * opening a folder, so it must not overwrite the last-folder they actually chose.
+   */
+  restored?: boolean;
   cols?: number;
   rows?: number;
 }

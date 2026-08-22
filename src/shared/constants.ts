@@ -31,6 +31,8 @@ export const DEFAULT_PREFERENCES = {
   tabSwitchMode: 'mru' as const,
   newTabShortcut: 'Ctrl+T' as const,
   defaultAgent: 'claude' as const,
+  newTabFolderMode: 'last' as const,
+  newTabFolder: '',
 };
 
 export const DEFAULT_APP_STATE = {
@@ -43,4 +45,5 @@ export const DEFAULT_APP_STATE = {
   codexSessionColors: {},
   preferences: DEFAULT_PREFERENCES,
   dismissedUpdateVersion: null as string | null,
+  lastFolder: null as string | null,
 };
