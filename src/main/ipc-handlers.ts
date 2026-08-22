@@ -17,6 +17,7 @@ import { detectCodexAttention, detectStatus } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
 import { CodexCommandTracker } from './codex-command-tracker';
 import { normalizeTabColor } from '../shared/tab-colors';
+import { resolveNewTabFolder } from './new-tab-folder';
 import {
   isPtyDebugEnabled,
   getDiagnostics,
@@ -412,6 +413,11 @@ export function registerIpcHandlers(
       knownCodexSessions.add(sessionId);
       claimedCodexSessions.add(sessionId);
     }
+    // Recorded on a session that actually started, not on the pick, so resuming from
+    // the sidebar or Recently Closed counts and a cancelled pick does not. Startup
+    // restore is excluded: it replays every saved tab, which would otherwise leave
+    // the last one restored standing in as "the folder you last opened".
+    if (!request.restored) stateManager.setLastFolder(request.folder);
     saveTabState();
     if (codexSessionsBefore) {
       await waitForNewCodexSession(tabId, request.folder, codexSessionsBefore, sessionId);
@@ -518,13 +524,19 @@ export function registerIpcHandlers(
     return Array.from(tabs.values());
   });
 
-  ipcMain.handle(IPC.FOLDER_PICK, async (): Promise<string | null> => {
-    const mainWindow = getMainWindow();
-    if (!mainWindow) return null;
+  ipcMain.handle(IPC.FOLDER_PICK, async (event): Promise<string | null> => {
+    // Parent to whichever window asked. Preferences has its own Browse button, and a
+    // modal attached to the main window from there is unreachable behind it.
+    const parent = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
+    if (!parent) return null;
 
-    const result = await dialog.showOpenDialog(mainWindow, {
+    const result = await dialog.showOpenDialog(parent, {
       properties: ['openDirectory'],
       title: 'Select project folder',
+      defaultPath: resolveNewTabFolder(
+        stateManager.getPreferences(),
+        stateManager.getState().lastFolder,
+      ),
     });
 
     if (result.canceled || result.filePaths.length === 0) {

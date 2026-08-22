@@ -14,5 +14,8 @@ contextBridge.exposeInMainWorld('preferencesAPI', {
   savePreferences: (prefs: Preferences) =>
     ipcRenderer.invoke('preferences:save', prefs),
   closeWindow: () => ipcRenderer.send('preferences:close'),
+  // Shares the main window's picker; the handler parents the dialog to whichever
+  // window asked, so it opens modal to Preferences rather than behind it.
+  pickFolder: (): Promise<string | null> => ipcRenderer.invoke(IPC.FOLDER_PICK),
   getTheme: () => resolvedTheme,
 });
