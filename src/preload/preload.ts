@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import type { AgentAvailability, AgentSession, AgentType, TabCreateRequest, PtyDataMessage, AppState, TabState, GitInfo, RecentlyClosedTab, Preferences, TabColorPickerMessage, TabMetadataMessage, TabSessionMessage, UpdateInfo } from '../shared/types';
+import type { AgentAvailability, AgentSession, SessionListing, AgentType, TabCreateRequest, PtyDataMessage, AppState, TabState, GitInfo, RecentlyClosedTab, Preferences, TabColorPickerMessage, TabMetadataMessage, TabSessionMessage, UpdateInfo } from '../shared/types';
 
 contextBridge.exposeInMainWorld('codeherd', {
   // Invoke (request/response)
@@ -21,7 +21,7 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.invoke(IPC.TAB_GET_ALL),
   reorderTabs: (tabIds: string[]): Promise<void> =>
     ipcRenderer.invoke(IPC.TAB_REORDER, tabIds),
-  listSessions: (folder: string, agent: AgentType): Promise<AgentSession[]> =>
+  listSessions: (folder: string, agent: AgentType): Promise<SessionListing> =>
     ipcRenderer.invoke(IPC.SESSION_LIST, { folder, agent }),
   getAvailableAgents: (): Promise<AgentAvailability> =>
     ipcRenderer.invoke(IPC.AGENT_GET_AVAILABLE),

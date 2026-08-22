@@ -17,6 +17,8 @@ import { detectCodexAttention, detectStatus } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
 import { CodexCommandTracker } from './codex-command-tracker';
 import { normalizeTabColor } from '../shared/tab-colors';
+import { describeSessionProblem } from './session-diagnosis';
+import { detectAgentVersion } from './agent-version';
 import {
   isPtyDebugEnabled,
   getDiagnostics,
@@ -534,7 +536,16 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle(IPC.SESSION_LIST, async (_event, { folder, agent }: { folder: string; agent: AgentType }) => {
-    return sessionTracker.getSessionsForFolder(folder, agent === 'codex' ? 'codex' : 'claude');
+    const requested: AgentType = agent === 'codex' ? 'codex' : 'claude';
+    const listing = await sessionTracker.getSessionsForFolder(folder, requested);
+    if (!listing.problem) return listing;
+
+    // The CLI version is only worth fetching when something is actually wrong, and
+    // it is what makes the message actionable in a bug report.
+    const version = await detectAgentVersion(requested);
+    const problemDetail = describeSessionProblem(listing.problem, requested, version);
+    getDiagnostics()?.log('sessions.problem', `${requested} ${listing.problem} version=${version ?? 'unknown'}`);
+    return { ...listing, problemDetail };
   });
 
   ipcMain.handle(IPC.AGENT_GET_AVAILABLE, () => {

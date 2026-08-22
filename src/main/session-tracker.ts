@@ -4,6 +4,7 @@ import * as readline from 'readline';
 import { CLAUDE_HISTORY_FILE, CLAUDE_PROJECTS_DIR } from '../shared/constants';
 import type { AgentSession, AgentType, FolderPath, SessionId } from '../shared/types';
 import type { AgentRegistry } from './agent-registry';
+import { diagnoseSessionListing, type SessionProblem } from './session-diagnosis';
 import {
   CodexSessionTracker,
   type CodexSessionRef,
@@ -21,6 +22,16 @@ interface SessionAccumulator {
   rawProject: string;
 }
 
+/**
+ * A folder's sessions, plus why the list is empty or short when it is. The reason
+ * matters: "you have never used an agent here" and "CodeHerd can no longer read
+ * your sessions" both rendered as an empty list before.
+ */
+export interface SessionListing {
+  sessions: AgentSession[];
+  problem: SessionProblem | null;
+}
+
 export class SessionTracker {
   private codex = new CodexSessionTracker();
 
@@ -31,8 +42,8 @@ export class SessionTracker {
     private projectsDir: string = CLAUDE_PROJECTS_DIR,
   ) {}
 
-  async getSessionsForFolder(folder: FolderPath, agent: AgentType): Promise<AgentSession[]> {
-    if (agent === 'codex') return this.codex.getSessionsForFolder(folder);
+  async getSessionsForFolder(folder: FolderPath, agent: AgentType): Promise<SessionListing> {
+    if (agent === 'codex') return this.codex.getSessionListingForFolder(folder);
     return this.getClaudeSessionsForFolder(folder);
   }
 
@@ -52,46 +63,57 @@ export class SessionTracker {
     return this.codex.getSessionRuntime(ref);
   }
 
-  private async getClaudeSessionsForFolder(folder: FolderPath): Promise<AgentSession[]> {
+  private async getClaudeSessionsForFolder(folder: FolderPath): Promise<SessionListing> {
     if (!fs.existsSync(this.historyFile)) {
-      return [];
+      return { sessions: [], problem: diagnoseSessionListing({ storeExists: false, linesRead: 0, linesParsed: 0, sessions: 0 }) };
     }
 
     const accumulators = new Map<string, SessionAccumulator>();
+    // Counted so a format change is distinguishable from an empty history.
+    let linesRead = 0;
+    let linesParsed = 0;
+    let readFailed = false;
 
-    const stream = fs.createReadStream(this.historyFile, { encoding: 'utf-8' });
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    try {
+      const stream = fs.createReadStream(this.historyFile, { encoding: 'utf-8' });
+      const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
-    for await (const line of rl) {
-      if (!line.trim()) continue;
-      try {
-        const entry = JSON.parse(line);
-        // Normalize paths for comparison (handle Windows backslash vs forward slash)
-        const entryProject = (entry.project || '').replace(/\\/g, '/').toLowerCase();
-        const targetFolder = folder.replace(/\\/g, '/').toLowerCase();
+      for await (const line of rl) {
+        if (!line.trim()) continue;
+        linesRead++;
+        try {
+          const entry = JSON.parse(line);
+          // Normalize paths for comparison (handle Windows backslash vs forward slash)
+          const entryProject = (entry.project || '').replace(/\\/g, '/').toLowerCase();
+          const targetFolder = folder.replace(/\\/g, '/').toLowerCase();
 
-        if (entryProject === targetFolder && entry.sessionId) {
-          const acc = accumulators.get(entry.sessionId) ?? {
-            lastMeaningfulPrompt: null,
-            lastPrompt: null,
-            timestamp: 0,
-            rawProject: entry.project || folder,
-          };
-          const display = (entry.display || entry.prompt || '').trim();
-          if (display) {
-            acc.lastPrompt = display;
-            // Slash commands like /exit or /clear make useless labels —
-            // prefer the last real prompt (#70)
-            if (!display.startsWith('/')) {
-              acc.lastMeaningfulPrompt = display;
+          if (entryProject === targetFolder && entry.sessionId) {
+            const acc = accumulators.get(entry.sessionId) ?? {
+              lastMeaningfulPrompt: null,
+              lastPrompt: null,
+              timestamp: 0,
+              rawProject: entry.project || folder,
+            };
+            const display = (entry.display || entry.prompt || '').trim();
+            if (display) {
+              acc.lastPrompt = display;
+              // Slash commands like /exit or /clear make useless labels —
+              // prefer the last real prompt (#70)
+              if (!display.startsWith('/')) {
+                acc.lastMeaningfulPrompt = display;
+              }
             }
+            acc.timestamp = entry.timestamp || acc.timestamp;
+            accumulators.set(entry.sessionId, acc);
           }
-          acc.timestamp = entry.timestamp || acc.timestamp;
-          accumulators.set(entry.sessionId, acc);
+          linesParsed++;
+        } catch {
+          // Skip malformed lines; the tally above decides whether there are enough
+          // of them to mean the format moved.
         }
-      } catch {
-        // Skip malformed lines
       }
+    } catch {
+      readFailed = true;
     }
 
     // Background agents log prompts against their project folder just like any other
@@ -122,7 +144,17 @@ export class SessionTracker {
     }
 
     // Sort by timestamp descending (most recent first)
-    return sessions.sort((a, b) => b.timestamp - a.timestamp);
+    sessions.sort((a, b) => b.timestamp - a.timestamp);
+    return {
+      sessions,
+      problem: diagnoseSessionListing({
+        storeExists: true,
+        linesRead,
+        linesParsed,
+        sessions: sessions.length,
+        readFailed,
+      }),
+    };
   }
 
   /**

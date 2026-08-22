@@ -740,6 +740,14 @@ body {
   font-style: italic;
 }
 
+/* A fault, not an absence: "no sessions found" and "your sessions could not be
+   read" must not look alike. */
+.session-problem {
+  color: var(--orange);
+  font-style: normal;
+  line-height: 1.45;
+}
+
 .tab.exited .tab-label {
   opacity: 0.5;
   font-style: italic;

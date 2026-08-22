@@ -502,7 +502,7 @@ export class TabManager {
     const folder = await window.codeherd.pickFolder();
     if (!folder) return;
 
-    const sessions = await window.codeherd.listSessions(folder, agent);
+    const { sessions } = await window.codeherd.listSessions(folder, agent);
     if (sessions.length === 0) {
       await this.createTab(folder, agent);
       return;
