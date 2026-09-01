@@ -229,12 +229,8 @@ body {
   background: var(--border);
 }
 
-/* Every other tab's right edge is drawn by the next tab starting. The last one has
-   nothing after it, and an inactive tab is the same colour as the titlebar, so
-   without this its trailing padding reads as a gap before the + button rather than
-   as part of the tab. An active tab draws its own edge via its background. */
-.tab:last-child:not(.active)::after {
-  display: block;
+.tab:last-child::after {
+  display: none;
 }
 
 .tab.dragging {
