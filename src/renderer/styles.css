@@ -206,8 +206,10 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 12px;
-  min-width: 100px;
+  padding: 0 6px 0 12px;
+  /* Lowered by roughly the width the close button now always occupies, so tabs
+     come out about the size they were before it was given a permanent slot. */
+  min-width: 84px;
   max-width: 220px;
   height: 32px;
   cursor: pointer;
@@ -339,15 +341,11 @@ body {
   opacity: 0.92;
 }
 
-/* Out of the flow on purpose. Hiding it with opacity alone leaves a 20px slot
-   behind, and at the end of the tab strip that empty slot reads as a gap before the
-   + button — 36px against the 10px you get when the button is showing. The label
-   yields room only while the button is visible, so tab width stays put. */
+/* Keeps its slot in the flow always, so a tab is the same width whether or not you
+   are pointing at it. That slot must never be empty: an invisible one reads as a gap
+   before the + button at the end of the strip — measured at 36px, against 10px when
+   the button is drawn — so it stays visible and merely dims when idle. */
 .tab-close {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
   background: none;
   border: none;
   color: var(--text-muted);
@@ -356,7 +354,7 @@ body {
   line-height: 1;
   padding: 2px;
   border-radius: 3px;
-  opacity: 0;
+  opacity: 0.45;
   width: 20px;
   height: 20px;
   display: flex;
@@ -368,11 +366,6 @@ body {
 .tab:hover .tab-close,
 .tab.active .tab-close {
   opacity: 1;
-}
-
-.tab:hover .tab-label,
-.tab.active .tab-label {
-  padding-right: 24px;
 }
 
 .tab-close:hover {
