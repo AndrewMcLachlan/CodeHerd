@@ -229,8 +229,12 @@ body {
   background: var(--border);
 }
 
-.tab:last-child::after {
-  display: none;
+/* Every other tab's right edge is drawn by the next tab starting. The last one has
+   nothing after it, and an inactive tab is the same colour as the titlebar, so
+   without this its trailing padding reads as a gap before the + button rather than
+   as part of the tab. An active tab draws its own edge via its background. */
+.tab:last-child:not(.active)::after {
+  display: block;
 }
 
 .tab.dragging {
@@ -342,9 +346,7 @@ body {
 }
 
 /* Keeps its slot in the flow always, so a tab is the same width whether or not you
-   are pointing at it. That slot must never be empty: an invisible one reads as a gap
-   before the + button at the end of the strip — measured at 36px, against 10px when
-   the button is drawn — so it stays visible and merely dims when idle. */
+   are pointing at it. Nothing under :hover or .active may change layout. */
 .tab-close {
   background: none;
   border: none;
@@ -354,7 +356,7 @@ body {
   line-height: 1;
   padding: 2px;
   border-radius: 3px;
-  opacity: 0.45;
+  opacity: 0;
   width: 20px;
   height: 20px;
   display: flex;
