@@ -191,7 +191,10 @@ body {
 /* Tab bar */
 #tab-bar {
   display: flex;
+  /* Both axes are set on purpose: naming only overflow-x computes overflow-y to
+     auto, making this a vertical scroll container it never needs to be. */
   overflow-x: auto;
+  overflow-y: hidden;
   min-width: 0;
   align-items: end;
   height: 100%;
@@ -207,9 +210,7 @@ body {
   align-items: center;
   gap: 6px;
   padding: 0 6px 0 12px;
-  /* Lowered by roughly the width the close button now always occupies, so tabs
-     come out about the size they were before it was given a permanent slot. */
-  min-width: 84px;
+  min-width: 100px;
   max-width: 220px;
   height: 32px;
   cursor: pointer;
