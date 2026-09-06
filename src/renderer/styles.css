@@ -201,8 +201,26 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* A styled scrollbar is a real one: it takes its height out of the content box.
+   Left alone that shortens the tabs' room to 33px and clips the 35px a coloured
+   active tab needs, so while the strip overflows it grows by exactly the
+   scrollbar's height and hangs that strip below the title bar. TabManager sets
+   .scrollable, because CSS cannot ask whether an element overflows. */
+#tab-bar.scrollable {
+  height: calc(100% + 3px);
+  margin-bottom: -3px;
+}
+
 #tab-bar::-webkit-scrollbar {
-  height: 0;
+  height: 3px;
+}
+
+#tab-bar::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+
+#tab-bar:hover::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
 }
 
 .tab {

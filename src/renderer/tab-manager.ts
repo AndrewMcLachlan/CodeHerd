@@ -28,6 +28,8 @@ export class TabManager {
     this.availableAgents = availableAgents;
     this.defaultAgent = defaultAgent;
     this.initDragListeners();
+    this.initWheelScrolling();
+    window.addEventListener('resize', () => this.updateScrollability());
   }
 
   setOnTabSwitch(callback: (tab: TabState) => void): void {
@@ -125,6 +127,13 @@ export class TabManager {
       el.classList.toggle('active', (el as HTMLElement).dataset.tabId === tabId);
     });
 
+    // Ctrl+Tab, Alt+1-9 and Recently Closed can all select a tab that has scrolled
+    // out of view; without this the terminal switches to a tab you cannot see.
+    // 'nearest' scrolls the minimum needed, so a visible tab does not jump.
+    this.tabBar
+      .querySelector(`[data-tab-id="${tabId}"]`)
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+
     if (tab && this.onTabSwitch) {
       this.onTabSwitch(tab);
     }
@@ -150,6 +159,7 @@ export class TabManager {
     this.terminalManager.dispose(tabId);
     this.tabs.delete(tabId);
     this.tabBar.querySelector(`[data-tab-id="${tabId}"]`)?.remove();
+    this.updateScrollability();
 
     // Remove from MRU history
     const mruIdx = this.mruHistory.indexOf(tabId);
@@ -258,6 +268,28 @@ export class TabManager {
 
   getAllTabs(): TabState[] {
     return Array.from(this.tabs.values());
+  }
+
+  /**
+   * Tell the stylesheet whether the strip currently overflows. The scrollbar takes
+   * its height from the content box, so the bar only makes room for it while there
+   * is one to show.
+   */
+  private updateScrollability(): void {
+    this.tabBar.classList.toggle(
+      'scrollable',
+      this.tabBar.scrollWidth > this.tabBar.clientWidth,
+    );
+  }
+
+  private initWheelScrolling(): void {
+    this.tabBar.addEventListener('wheel', (e) => {
+      // Leave real horizontal input (trackpad, tilt wheel) to the browser.
+      if (e.deltaX !== 0) return;
+      if (this.tabBar.scrollWidth <= this.tabBar.clientWidth) return;
+      e.preventDefault();
+      this.tabBar.scrollLeft += e.deltaY;
+    }, { passive: false });
   }
 
   private initDragListeners(): void {
@@ -407,6 +439,7 @@ export class TabManager {
 
     this.tabBar.appendChild(el);
     this.updateStatus(tab.id, tab.status);
+    this.updateScrollability();
   }
 
   private hideEmptyState(): void {
