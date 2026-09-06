@@ -543,8 +543,14 @@ async function init(): Promise<void> {
 
   if (isStylingMode) {
     const statuses: TabState['status'][] = ['running', 'waiting', 'attention', 'resuming', 'stopped'];
-    for (const status of statuses) {
-      tabManager.addStylingTab(status);
+    // Enough tabs to overflow the strip, so the scrollbar, wheel scrolling and
+    // scroll-into-view can be exercised. The first five still cover every status in
+    // order, and a few carry a colour so the /color bar can be checked against the
+    // room the scrollbar takes.
+    const STYLING_TAB_COUNT = 30;
+    const colours = new Map([[3, 'orange'], [12, 'green'], [29, 'blue']]);
+    for (let i = 0; i < STYLING_TAB_COUNT; i++) {
+      tabManager.addStylingTab(statuses[i % statuses.length], colours.get(i));
     }
     return;
   }
