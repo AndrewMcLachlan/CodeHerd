@@ -4,6 +4,7 @@ import { TerminalManager } from './terminal-manager';
 import { SessionPicker } from './session-picker';
 import { createAgentIcon } from './agent-icon';
 import { resolveTabColor } from '../shared/tab-colors';
+import { selectTabAfterClose } from './tab-selection';
 
 export class TabManager {
   private tabs = new Map<TabId, TabState>();
@@ -166,9 +167,9 @@ export class TabManager {
     if (mruIdx >= 0) this.mruHistory.splice(mruIdx, 1);
 
     if (this.activeTabId === tabId) {
-      const remaining = Array.from(this.tabs.keys());
-      if (remaining.length > 0) {
-        this.switchTo(remaining[remaining.length - 1]);
+      const next = selectTabAfterClose(this.mruHistory, Array.from(this.tabs.keys()));
+      if (next) {
+        this.switchTo(next);
       } else {
         this.activeTabId = null;
         this.showEmptyState();
@@ -463,7 +464,7 @@ export class TabManager {
     }
   }
 
-  addStylingTab(status: TabState['status']): void {
+  addStylingTab(status: TabState['status'], color?: string): void {
     const tabId = crypto.randomUUID();
     const tab: TabState = {
       id: tabId,
@@ -476,6 +477,7 @@ export class TabManager {
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
       status,
+      ...(color ? { color } : {}),
     };
     this.tabs.set(tabId, tab);
     this.renderTab(tab);
