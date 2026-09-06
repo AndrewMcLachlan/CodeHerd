@@ -64,6 +64,9 @@ body {
   align-items: end;
   background: var(--tab-inactive);
   height: 36px;
+  /* Keep out from under the window's caption buttons, which the OS draws over the
+     page. The fallbacks resolve to zero where there is no overlay, as on macOS. */
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
   -webkit-app-region: drag;
   user-select: none;
   flex-shrink: 0;
@@ -209,6 +212,10 @@ body {
 #tab-bar.scrollable {
   height: calc(100% + 3px);
   margin-bottom: -3px;
+  /* The strip hangs over #main-content, which comes later in the DOM and would
+     otherwise take every click landing on the scrollbar. */
+  position: relative;
+  z-index: 1;
 }
 
 #tab-bar::-webkit-scrollbar {
@@ -219,7 +226,7 @@ body {
   background: var(--border);
 }
 
-#tab-bar:hover::-webkit-scrollbar-thumb {
+#tab-bar::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
 
