@@ -253,10 +253,50 @@ export class TabManager {
     if (tab) {
       tab.status = 'stopped';
     }
+    this.terminalManager.setStopped(tabId, true);
     const tabEl = this.tabBar.querySelector(`[data-tab-id="${tabId}"]`);
     if (tabEl) {
       tabEl.classList.add('exited');
       tabEl.classList.remove('running', 'waiting', 'attention');
+    }
+  }
+
+  /**
+   * Start the agent again in a tab whose session has ended, keeping the tab itself —
+   * its id, place in the strip, label and colour.
+   */
+  async resurrect(tabId: TabId): Promise<void> {
+    const tab = this.tabs.get(tabId);
+    if (!tab || tab.status !== 'stopped') return;
+
+    const tabEl = this.tabBar.querySelector(`[data-tab-id="${tabId}"]`);
+
+    // A fresh terminal rather than the old one: the ended session's farewell should
+    // not sit above the conversation it is being resumed into.
+    this.terminalManager.dispose(tabId);
+    this.terminalManager.create(tabId);
+    this.terminalManager.show(tabId);
+    await new Promise(r => setTimeout(r, 150));
+    const dims = this.terminalManager.getDimensions(tabId);
+
+    try {
+      const revived = await window.codeherd.createTab({
+        tabId,
+        agent: tab.agent,
+        folder: tab.launchFolder,
+        resumeSessionId: tab.sessionId,
+        label: tab.label,
+        cols: dims?.cols,
+        rows: dims?.rows,
+      });
+      this.tabs.set(tabId, revived);
+      tabEl?.classList.remove('exited');
+      this.updateStatus(tabId, revived.status);
+      this.switchTo(tabId);
+    } catch (error) {
+      this.markExited(tabId, 1);
+      const reason = error instanceof Error ? error.message : String(error);
+      this.terminalManager.write(tabId, `\r\n\x1b[31mCould not resume: ${reason}\x1b[0m\r\n`);
     }
   }
 
