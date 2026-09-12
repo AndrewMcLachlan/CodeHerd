@@ -25,6 +25,12 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # An Electron major is a Chromium, Node and V8 jump with breaking API changes,
+      # so it lands as planned work rather than a bump to merge. Tracked on the 1.1
+      # milestone; drop this entry when that upgrade is being done.
+      - dependency-name: "electron"
+        update-types: ["version-update:semver-major"]
     open-pull-requests-limit: 20
 
   - package-ecosystem: github-actions
