@@ -361,6 +361,12 @@ export function registerIpcHandlers(
       }
     });
 
+    // A tab spawning over itself keeps its id, so the session it is replacing must be
+    // released or its watcher keeps pushing that session's name and colour at a tab it
+    // no longer owns.
+    const replaced = tabs.get(tabId);
+    if (replaced?.agent === 'claude') metadataWatcher.unregisterTab(replaced.sessionId);
+
     // Register Claude first so the initial transcript read can seed all known metadata.
     // Codex metadata comes from its thread inventory and rollout transcript instead.
     if (requestedAgent === 'claude') metadataWatcher.registerTab(tabId, sessionId);

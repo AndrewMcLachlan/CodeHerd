@@ -400,6 +400,11 @@ async function init(): Promise<void> {
 
   window.codeherd.onPtyExit((msg) => {
     tabManager.markExited(msg.tabId, msg.exitCode);
+    terminalManager.write(msg.tabId, '\r\n\x1b[2m\u2014 session ended \u00b7 press Enter to resume \u2014\x1b[0m\r\n');
+  });
+
+  terminalManager.setOnResurrect((tabId) => {
+    void tabManager.resurrect(tabId);
   });
 
   window.codeherd.onTabStatus((msg) => {
