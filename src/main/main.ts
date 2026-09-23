@@ -6,6 +6,7 @@ import { StateManager } from './state-manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { buildShutdownPrompt, selectBusyTabs } from './shutdown-guard';
 import { routeLinksToBrowser } from './external-links';
+import { windowBoundsToPersist } from './window-bounds';
 import { buildAppMenu } from './menu';
 import { detectAvailableAgents } from './agent-detection';
 import { checkForUpdate } from './update-checker';
@@ -144,12 +145,11 @@ function createWindow(): void {
     if (boundsTimer) clearTimeout(boundsTimer);
     boundsTimer = setTimeout(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        const wb = mainWindow.getBounds();
-        stateManager.setWindowBounds({
-          ...wb,
-          isMaximized: mainWindow.isMaximized(),
-        });
-        stateManager.save();
+        const wb = windowBoundsToPersist(mainWindow);
+        if (wb) {
+          stateManager.setWindowBounds(wb);
+          stateManager.save();
+        }
       }
     }, 1000);
   };
