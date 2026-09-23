@@ -11,6 +11,8 @@ interface PtyEntry {
   process: pty.IPty;
   sessionId: SessionId;
   agent: AgentType;
+  cols: number;
+  rows: number;
 }
 
 export interface SpawnOptions {
@@ -70,15 +72,18 @@ export class PtyManager {
         : ['-NoLogo', '-Command', buildPowerShellAgentCommand(agentPath, args)])
       : ['-l', '-c', [agentPath, ...args].map(quote).join(' ')];
 
+    const spawnCols = cols || 80;
+    const spawnRows = rows || 24;
+
     const ptyProcess = pty.spawn(shell, shellArgs, {
       name: 'xterm-256color',
-      cols: cols || 80,
-      rows: rows || 24,
+      cols: spawnCols,
+      rows: spawnRows,
       cwd: folder,
       env: { ...this.shellEnv, TERM: 'xterm-256color', SHELL: shell },
     });
 
-    this.ptys.set(tabId, { process: ptyProcess, sessionId, agent });
+    this.ptys.set(tabId, { process: ptyProcess, sessionId, agent, cols: spawnCols, rows: spawnRows });
     return { sessionId };
   }
 
@@ -102,12 +107,17 @@ export class PtyManager {
 
   resize(tabId: TabId, cols: number, rows: number): void {
     const entry = this.ptys.get(tabId);
-    if (entry) {
-      try {
-        entry.process.resize(cols, rows);
-      } catch {
-        // Resize can fail if the process has already exited
-      }
+    if (!entry) return;
+    // Must stay guarded: ConPTY re-emits its viewport into the output stream on every
+    // ResizePseudoConsole call, so forwarding a size the pty already has duplicates
+    // whatever the agent is printing into the terminal's scrollback.
+    if (entry.cols === cols && entry.rows === rows) return;
+    try {
+      entry.process.resize(cols, rows);
+      entry.cols = cols;
+      entry.rows = rows;
+    } catch {
+      // Resize can fail if the process has already exited
     }
   }
 
