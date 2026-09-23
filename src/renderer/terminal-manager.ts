@@ -1,6 +1,7 @@
 import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { attachWebglRenderer } from './webgl-renderer';
 import type { TabId, ResolvedTheme, NewTabShortcut } from '../shared/types';
 import { DEFAULT_NEW_TAB_SHORTCUT, matchesShortcut } from '../shared/shortcut';
 
@@ -148,6 +149,7 @@ export class TerminalManager {
     }));
 
     terminal.open(element);
+    attachWebglRenderer(terminal);
 
     // Clipboard and keyboard shortcut handling
     terminal.attachCustomKeyEventHandler((e) => {
