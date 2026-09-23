@@ -55,6 +55,7 @@ interface TerminalEntry {
   fitAddon: FitAddon;
   element: HTMLDivElement;
   cursorSuppressed: boolean;
+  stopped: boolean;
   /** Mutable reference so closures always see the current tab ID */
   ref: { tabId: TabId };
 }
@@ -89,6 +90,7 @@ export class TerminalManager {
   private terminals = new Map<TabId, TerminalEntry>();
   private container: HTMLElement;
   private onTitleChangeCallback: ((tabId: TabId, title: string) => void) | null = null;
+  private onResurrect: ((tabId: TabId) => void) | null = null;
   private fontFamily = "'Cascadia Code', 'Fira Code', Consolas, monospace";
   private fontSizePoints = DEFAULT_TERMINAL_FONT_SIZE_POINTS;
   private fontRefitRequest: number | null = null;
@@ -99,6 +101,20 @@ export class TerminalManager {
 
   constructor() {
     this.container = document.getElementById('terminal-container')!;
+  }
+
+  /** Called when Enter is pressed in a tab whose agent has exited. */
+  setOnResurrect(callback: (tabId: TabId) => void): void {
+    this.onResurrect = callback;
+  }
+
+  /**
+   * Mark whether a tab's agent has exited. Enter is claimed while it has, so it must
+   * be cleared again when a session starts, or the tab swallows every Enter.
+   */
+  setStopped(tabId: TabId, stopped: boolean): void {
+    const entry = this.terminals.get(tabId);
+    if (entry) entry.stopped = stopped;
   }
 
   setOnTitleChange(callback: (tabId: TabId, title: string) => void): void {
@@ -152,6 +168,15 @@ export class TerminalManager {
     // Clipboard and keyboard shortcut handling
     terminal.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
+
+      // A dead tab has nothing to type at: its last line offers to resume, and Enter
+      // takes that offer.
+      if (this.terminals.get(ref.tabId)?.stopped) {
+        if (e.key === 'Enter' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+          this.onResurrect?.(ref.tabId);
+          return false;
+        }
+      }
 
       // Let F11 (fullscreen toggle) pass through to Electron menu
       if (e.key === 'F11') return false;
@@ -297,7 +322,7 @@ export class TerminalManager {
       }
     });
 
-    this.terminals.set(tabId, { terminal, fitAddon, element, cursorSuppressed: false, ref });
+    this.terminals.set(tabId, { terminal, fitAddon, element, cursorSuppressed: false, stopped: false, ref });
 
     return terminal;
   }
