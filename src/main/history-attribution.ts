@@ -26,15 +26,18 @@ export function normalizeFolder(p: string): string {
  *    owner, which is what leaked colour/name between two tabs on the same folder:
  *    a prompt in tab A logs A's id, and if B was the active tab the old code handed
  *    A's id (and thus A's /color and /rename) to B (#109);
- *  - no Claude tab is open on that folder.
+ *  - no Claude tab is open on that folder;
+ *  - several tabs share the folder and liveness cannot single one out.
  *
- * Otherwise (a genuinely new id, owned by nobody) it returns the tab most likely to
- * have produced it: the active tab, else the most recently active tab on the folder.
+ * `liveSessionIds` supplies the session ids that still have a running Claude process
+ * behind them. It is read lazily because it costs a directory scan and only a folder
+ * with more than one Claude tab needs it.
  */
 export function selectTabForHistoryRollforward(
   tabs: readonly TabState[],
   project: string,
   sessionId: string,
+  liveSessionIds?: () => ReadonlySet<string>,
 ): TabState | null {
   // Already owned → not a roll-forward. Guards against hijacking a sibling tab's
   // session (the root cause of #109). sessionIds are globally unique, so an owner
@@ -46,10 +49,15 @@ export function selectTabForHistoryRollforward(
     (t) => t.agent === 'claude' && normalizeFolder(t.launchFolder) === target,
   );
   if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
 
-  return (
-    candidates.find((t) => t.isActive)
-    ?? [...candidates].sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0]
-    ?? null
-  );
+  // Which of several same-folder tabs rolled forward cannot be guessed from activity:
+  // preferring the active tab handed a freshly opened tab its sibling's new session id,
+  // and the sibling's /rename and /color followed it there. A tab whose own session
+  // still has a live Claude process behind it has not rolled forward, so it is not the
+  // owner; adopt only when that leaves exactly one tab it could belong to.
+  if (!liveSessionIds) return null;
+  const live = liveSessionIds();
+  const rolled = candidates.filter((t) => !live.has(t.sessionId));
+  return rolled.length === 1 ? rolled[0] : null;
 }

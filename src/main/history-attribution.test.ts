@@ -37,16 +37,46 @@ describe('selectTabForHistoryRollforward', () => {
     expect(selectTabForHistoryRollforward([a], 'C:\\proj', 'sidNew')?.id).toBe('A');
   });
 
-  it('prefers the active tab for a new id when several share the folder', () => {
+  it('gives a new id to the tab whose own session is no longer live', () => {
+    // A rolled sidA forward, so sidA has no process left; B was freshly opened and is
+    // active. Preferring the active tab gave B the id, and A's later /rename renamed B.
     const a = tab({ id: 'A', sessionId: 'sidA', isActive: false, lastActivityAt: 100 });
-    const b = tab({ id: 'B', sessionId: 'sidB', isActive: true, lastActivityAt: 1 });
-    expect(selectTabForHistoryRollforward([a, b], 'C:\\proj', 'sidNew')?.id).toBe('B');
+    const b = tab({ id: 'B', sessionId: 'sidB', isActive: true, lastActivityAt: 999 });
+    const live = () => new Set(['sidB', 'sidNew']);
+    expect(selectTabForHistoryRollforward([a, b], 'C:\\proj', 'sidNew', live)?.id).toBe('A');
   });
 
-  it('falls back to the most recently active tab when none is active', () => {
+  it('does not hand a new id to a freshly opened active tab that still owns its own', () => {
     const a = tab({ id: 'A', sessionId: 'sidA', isActive: false, lastActivityAt: 100 });
-    const b = tab({ id: 'B', sessionId: 'sidB', isActive: false, lastActivityAt: 5 });
-    expect(selectTabForHistoryRollforward([a, b], 'C:\\proj', 'sidNew')?.id).toBe('A');
+    const b = tab({ id: 'B', sessionId: 'sidB', isActive: true, lastActivityAt: 999 });
+    const live = () => new Set(['sidB', 'sidNew']);
+    expect(selectTabForHistoryRollforward([a, b], 'C:\\proj', 'sidNew', live)?.id).not.toBe('B');
+  });
+
+  it('ignores a new id when every same-folder tab is still on its own session', () => {
+    const a = tab({ id: 'A', sessionId: 'sidA', lastActivityAt: 100 });
+    const b = tab({ id: 'B', sessionId: 'sidB', isActive: true });
+    const live = () => new Set(['sidA', 'sidB']);
+    expect(selectTabForHistoryRollforward([a, b], 'C:\\proj', 'sidNew', live)).toBeNull();
+  });
+
+  it('ignores a new id when liveness cannot single out one tab', () => {
+    const a = tab({ id: 'A', sessionId: 'sidA', lastActivityAt: 100 });
+    const b = tab({ id: 'B', sessionId: 'sidB', isActive: true });
+    const live = () => new Set<string>();
+    expect(selectTabForHistoryRollforward([a, b], 'C:\\proj', 'sidNew', live)).toBeNull();
+  });
+
+  it('refuses to guess between same-folder tabs when liveness is unavailable', () => {
+    const a = tab({ id: 'A', sessionId: 'sidA', isActive: false, lastActivityAt: 100 });
+    const b = tab({ id: 'B', sessionId: 'sidB', isActive: true });
+    expect(selectTabForHistoryRollforward([a, b], 'C:\\proj', 'sidNew')).toBeNull();
+  });
+
+  it('still adopts for a lone tab without consulting liveness', () => {
+    const a = tab({ id: 'A', sessionId: 'sidA' });
+    const live = (): ReadonlySet<string> => { throw new Error('should not be consulted'); };
+    expect(selectTabForHistoryRollforward([a], 'C:\\proj', 'sidNew', live)?.id).toBe('A');
   });
 
   it('returns null when no Claude tab is open on the folder', () => {
