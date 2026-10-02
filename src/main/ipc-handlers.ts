@@ -28,6 +28,7 @@ import {
   isDiagnosticsRecording,
 } from './diagnostics';
 import { normalizeFolder, selectTabForHistoryRollforward } from './history-attribution';
+import { readLiveSessionIds } from './live-sessions';
 import { openExternal, routeLinksToBrowser } from './external-links';
 
 function resolveTheme(pref: ThemePreference): ResolvedTheme {
@@ -112,7 +113,9 @@ export function registerIpcHandlers(
   // so we use it to keep the owning tab in sync. Attribution is best-effort and must not
   // hijack a session another same-folder tab already owns (#109) — see the helper.
   const historyWatcher = new HistoryWatcher(async ({ project, sessionId }) => {
-    const tab = selectTabForHistoryRollforward(Array.from(tabs.values()), project, sessionId);
+    const tab = selectTabForHistoryRollforward(
+      Array.from(tabs.values()), project, sessionId, readLiveSessionIds,
+    );
     if (!tab) return;
 
     // A background agent logs prompts against the same project folder as the tab it was
