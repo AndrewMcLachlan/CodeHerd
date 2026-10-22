@@ -2,6 +2,7 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { attachWebglRenderer } from './webgl-renderer';
+import { matchAgentCharacterWidths } from './character-widths';
 import type { TabId, ResolvedTheme, NewTabShortcut } from '../shared/types';
 import { DEFAULT_NEW_TAB_SHORTCUT, matchesShortcut } from '../shared/shortcut';
 
@@ -134,6 +135,7 @@ export class TerminalManager {
     const ref = { tabId };
 
     const terminal = new Terminal({
+      allowProposedApi: true,
       cursorBlink: true,
       cursorStyle: 'bar',
       cursorWidth: 1,
@@ -163,6 +165,8 @@ export class TerminalManager {
     terminal.loadAddon(new WebLinksAddon((_event, url) => {
       window.codeherd.openExternal(url);
     }));
+
+    matchAgentCharacterWidths(terminal);
 
     terminal.open(element);
     attachWebglRenderer(terminal);
