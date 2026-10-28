@@ -37,6 +37,36 @@ export function detectCodexAttention(data: string): boolean {
   return title !== null && /^\[\s*[!.]\s*\]\s+Action Required(?:\s+\||$)/.test(title);
 }
 
+const codexProgramStatus = /\x1b\]7501;state=([a-z]+)[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+
+const codexProgramStatuses: Record<string, Status> = {
+  idle: 'waiting',
+  done: 'waiting',
+  error: 'waiting',
+  working: 'running',
+  blocked: 'attention',
+};
+
+/**
+ * The status Codex last reported through OSC 7501 (`ESC ] 7501;state=working:app=codex ESC \`),
+ * or null when the data carries no report. `clear` is sent on exit and maps to nothing.
+ */
+export function detectCodexProgramStatus(data: string): Status | null {
+  let status: Status | null = null;
+  for (const match of data.matchAll(codexProgramStatus)) {
+    status = codexProgramStatuses[match[1]] ?? status;
+  }
+  return status;
+}
+
+/** The unterminated OSC at the end of a chunk, to prepend to the next one so a report split across reads is still seen. */
+export function trailingPartialOsc(data: string): string {
+  const start = data.lastIndexOf('\x1b]');
+  if (start < 0) return '';
+  const rest = data.slice(start);
+  return rest.length > 128 || rest.includes('\x07') || rest.includes('\x1b\\') ? '' : rest;
+}
+
 /**
  * Spinner frames Claude Code puts at the front of the OSC title while a turn runs.
  *

@@ -13,7 +13,7 @@ import { HistoryWatcher } from './history-watcher';
 import { AgentRegistry } from './agent-registry';
 import { detectAvailableAgents } from './agent-detection';
 import { getGitInfo } from './git-info';
-import { detectCodexAttention, detectStatus } from './status-detection';
+import { detectCodexAttention, detectCodexProgramStatus, detectStatus, trailingPartialOsc } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
 import { CodexCommandTracker } from './codex-command-tracker';
 import { normalizeTabColor } from '../shared/tab-colors';
@@ -155,6 +155,9 @@ export function registerIpcHandlers(
     safeSend(IPC.TAB_METADATA, { tabId, color } satisfies TabMetadataMessage);
   }
 
+  // Tabs whose Codex reports its own status (OSC 7501); older releases fall back to the rollout and title.
+  const codexReportingTabs = new Set<string>();
+  const codexOscTails = new Map<string, string>();
   const knownCodexSessions = new Set<string>();
   const claimedCodexSessions = new Set<string>();
   let codexInventoryReady = false;
@@ -205,7 +208,7 @@ export function registerIpcHandlers(
     // The rollout remains "running" while Codex is paused at an approval prompt.
     // Keep the terminal-derived attention state latched until the user answers it.
     const isPendingCodexApproval = tab.status === 'attention' && runtime.status === 'running';
-    if (runtime.status && tab.status !== runtime.status && tab.status !== 'stopped' && !isPendingCodexApproval) {
+    if (runtime.status && !codexReportingTabs.has(tab.id) && tab.status !== runtime.status && tab.status !== 'stopped' && !isPendingCodexApproval) {
       tab.status = runtime.status;
       safeSend(IPC.TAB_STATUS, { tabId: tab.id, status: runtime.status });
     }
@@ -285,14 +288,6 @@ export function registerIpcHandlers(
     if (!availableAgents[requestedAgent]) {
       throw new Error(`${requestedAgent === 'codex' ? 'Codex' : 'Claude Code'} CLI was not detected`);
     }
-    const codexSessionsBefore = requestedAgent === 'codex' && !request.resumeSessionId
-      ? new Set(
-          (await sessionTracker.getCodexSessionRefs())
-            .filter(ref => normalizeFolder(ref.project) === normalizeFolder(request.folder))
-            .map(ref => ref.sessionId),
-        )
-      : null;
-
     // A background agent's session can't be resumed while its process is alive — the CLI
     // refuses and points you at `claude agents`. Every path that reopens a session (tab
     // restore, sidebar click, recently-closed) lands here, so resolve it once, here:
@@ -301,15 +296,26 @@ export function registerIpcHandlers(
       ? await agentRegistry.getBackgroundAgent(request.resumeSessionId)
       : undefined;
 
-    // A session Claude never persisted — e.g. a tab opened but never used before the app
-    // was closed — has no transcript, so `claude --resume` prints "No conversation found"
-    // into the tab. Fall back to a fresh session so the tab reopens cleanly. Live
-    // background agents are exempt: they attach, and needn't have a transcript yet.
+    // A session the agent never persisted — e.g. a tab opened but never used before it
+    // was closed — can't be resumed: Claude prints "No conversation found" and Codex "No
+    // saved session found" into the tab. Fall back to a fresh session so the tab reopens
+    // cleanly. Live background agents are exempt: they attach, and needn't have a
+    // transcript yet.
     let resumeSessionId = request.resumeSessionId;
-    if (requestedAgent === 'claude' && resumeSessionId && !backgroundAgent
-        && !(await sessionTracker.canResume(request.folder, resumeSessionId))) {
-      resumeSessionId = undefined;
+    if (resumeSessionId && !backgroundAgent) {
+      const resumable = requestedAgent === 'codex'
+        ? !!(await sessionTracker.getCodexSessionRef(resumeSessionId))
+        : await sessionTracker.canResume(request.folder, resumeSessionId);
+      if (!resumable) resumeSessionId = undefined;
     }
+
+    const codexSessionsBefore = requestedAgent === 'codex' && !resumeSessionId
+      ? new Set(
+          (await sessionTracker.getCodexSessionRefs())
+            .filter(ref => normalizeFolder(ref.project) === normalizeFolder(request.folder))
+            .map(ref => ref.sessionId),
+        )
+      : null;
 
     const { sessionId } = ptyManager.spawn(tabId, requestedAgent, request.folder, {
       resumeSessionId,
@@ -343,10 +349,17 @@ export function registerIpcHandlers(
           currentTab.status = newStatus;
           safeSend(IPC.TAB_STATUS, { tabId, status: newStatus });
         }
-      } else if (currentTab?.agent === 'codex' && currentTab.status !== 'stopped'
-        && currentTab.status !== 'attention' && detectCodexAttention(data)) {
-        currentTab.status = 'attention';
-        safeSend(IPC.TAB_STATUS, { tabId, status: 'attention' });
+      } else if (currentTab?.agent === 'codex' && currentTab.status !== 'stopped') {
+        const scanned = (codexOscTails.get(tabId) ?? '') + data;
+        codexOscTails.set(tabId, trailingPartialOsc(scanned));
+        const reported = detectCodexProgramStatus(scanned);
+        if (reported) codexReportingTabs.add(tabId);
+        const newStatus = reported
+          ?? (!codexReportingTabs.has(tabId) && detectCodexAttention(data) ? 'attention' : null);
+        if (newStatus && newStatus !== currentTab.status) {
+          currentTab.status = newStatus;
+          safeSend(IPC.TAB_STATUS, { tabId, status: newStatus });
+        }
       }
 
       safeSend(IPC.PTY_DATA, { tabId, data });
@@ -411,7 +424,8 @@ export function registerIpcHandlers(
       isActive: true,
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
-      status: resumeSessionId ? 'resuming' : 'running',
+      // Codex records nothing until the first prompt, so its rollout can't report idle.
+      status: resumeSessionId ? 'resuming' : requestedAgent === 'codex' ? 'waiting' : 'running',
     };
 
     // Mark all other tabs as not active
@@ -440,6 +454,8 @@ export function registerIpcHandlers(
     const tab = tabs.get(tabId);
     if (tab?.agent === 'claude') metadataWatcher.unregisterTab(tab.sessionId);
     if (tab?.agent === 'codex') claimedCodexSessions.delete(tab.sessionId);
+    codexReportingTabs.delete(tabId);
+    codexOscTails.delete(tabId);
     codexCommandTracker.forget(tabId);
     await ptyManager.gracefulKill(tabId);
     tabs.delete(tabId);
@@ -497,11 +513,13 @@ export function registerIpcHandlers(
       }
       // Enter submits the Codex composer. Publish running before forwarding it so the
       // renderer hides the caret before Codex begins its first animated redraw.
+      // A Codex that reports its own status (OSC 7501) won't repeat one we overwrite here.
+      const guessesStatus = !codexReportingTabs.has(tabId);
       const isCodexSubmit = tab.agent === 'codex' && tab.status === 'waiting' && data === '\r';
-      if (tab.status === 'resuming' || isCodexSubmit) {
+      if (guessesStatus && (tab.status === 'resuming' || isCodexSubmit)) {
         tab.status = 'running';
         safeSend(IPC.TAB_STATUS, { tabId, status: 'running' });
-      } else if (tab.status === 'attention') {
+      } else if (guessesStatus && tab.status === 'attention') {
         // Ignore cursor sequences (arrow-key navigation in selection prompts),
         // both CSI (ESC[A) and SS3 (ESC OA) forms. A bare Escape is not
         // navigation — it dismisses the prompt or screen (e.g. /usage),

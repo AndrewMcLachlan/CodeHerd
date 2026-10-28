@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   detectAttention,
   detectCodexAttention,
+  detectCodexProgramStatus,
   detectStatus,
   extractOscTitle,
   isBusyTitle,
+  trailingPartialOsc,
 } from './status-detection';
 
 const E = '\x1b';
@@ -140,6 +142,57 @@ describe('detectCodexAttention', () => {
     expect(detectCodexAttention(`${E}]0;Codex — working\x07`)).toBe(false);
     expect(detectCodexAttention(`${E}]0;Action Required\x07`)).toBe(false);
     expect(detectCodexAttention('[!] Action Required without an OSC title')).toBe(false);
+  });
+});
+
+describe('detectCodexProgramStatus', () => {
+  const st = `${E}\\`;
+  const report = (state: string) => `${E}]7501;state=${state}:app=codex${st}`;
+
+  it.each([
+    ['idle', 'waiting'],
+    ['done', 'waiting'],
+    ['error', 'waiting'],
+    ['working', 'running'],
+    ['blocked', 'attention'],
+  ] as const)('maps %s to %s', (state, status) => {
+    expect(detectCodexProgramStatus(report(state))).toBe(status);
+  });
+
+  it('reads the blocking reason suffix and the BEL terminator', () => {
+    expect(detectCodexProgramStatus(`${E}]7501;state=blocked:app=codex:kind=permission${st}`)).toBe('attention');
+    expect(detectCodexProgramStatus(`${E}]7501;state=working:app=codex\x07`)).toBe('running');
+  });
+
+  it('takes the last report in a chunk', () => {
+    // Startup reports working while MCP servers load, then idle.
+    expect(detectCodexProgramStatus(`${report('idle')}› Ask Codex${report('working')}${report('idle')}`)).toBe('waiting');
+  });
+
+  it('ignores clear, unterminated reports and other output', () => {
+    expect(detectCodexProgramStatus(`${E}]7501;state=clear${st}`)).toBeNull();
+    expect(detectCodexProgramStatus(`${E}]7501;state=working:app=co`)).toBeNull();
+    expect(detectCodexProgramStatus(`${E}]0;Codex${st} working`)).toBeNull();
+  });
+
+  it('sees a report split across two reads once the tail is carried over', () => {
+    const first = `output${E}]7501;state=wor`;
+    const second = `king:app=codex${st}more output`;
+    expect(detectCodexProgramStatus(first)).toBeNull();
+    expect(detectCodexProgramStatus(trailingPartialOsc(first) + second)).toBe('running');
+  });
+});
+
+describe('trailingPartialOsc', () => {
+  it('carries nothing once the last OSC is terminated', () => {
+    expect(trailingPartialOsc(`${E}]7501;state=idle:app=codex${E}\\ text`)).toBe('');
+    expect(trailingPartialOsc(`${E}]0;title\x07`)).toBe('');
+    expect(trailingPartialOsc('plain text')).toBe('');
+  });
+
+  it('carries an unterminated OSC, but not an unbounded one', () => {
+    expect(trailingPartialOsc(`done${E}]7501;state=id`)).toBe(`${E}]7501;state=id`);
+    expect(trailingPartialOsc(`${E}]8;;${'x'.repeat(200)}`)).toBe('');
   });
 });
 
