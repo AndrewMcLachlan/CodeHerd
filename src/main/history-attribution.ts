@@ -33,12 +33,12 @@ export function normalizeFolder(p: string): string {
  * behind them. It is read lazily because it costs a directory scan and only a folder
  * with more than one Claude tab needs it.
  */
-export function selectTabForHistoryRollforward(
+export async function selectTabForHistoryRollforward(
   tabs: readonly TabState[],
   project: string,
   sessionId: string,
-  liveSessionIds?: () => ReadonlySet<string>,
-): TabState | null {
+  liveSessionIds?: () => ReadonlySet<string> | Promise<ReadonlySet<string>>,
+): Promise<TabState | null> {
   // Already owned → not a roll-forward. Guards against hijacking a sibling tab's
   // session (the root cause of #109). sessionIds are globally unique, so an owner
   // in any folder means this entry is not a new session needing a home.
@@ -57,7 +57,7 @@ export function selectTabForHistoryRollforward(
   // still has a live Claude process behind it has not rolled forward, so it is not the
   // owner; adopt only when that leaves exactly one tab it could belong to.
   if (!liveSessionIds) return null;
-  const live = liveSessionIds();
+  const live = await liveSessionIds();
   const rolled = candidates.filter((t) => !live.has(t.sessionId));
   return rolled.length === 1 ? rolled[0] : null;
 }

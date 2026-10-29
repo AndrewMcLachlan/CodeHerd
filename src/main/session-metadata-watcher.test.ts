@@ -52,28 +52,28 @@ afterEach(() => {
 });
 
 describe('slash-command metadata', () => {
-  it('tracks name from custom-title and agent-name entries, and colour from agent-color', () => {
+  it('tracks name from custom-title and agent-name entries, and colour from agent-color', async () => {
     append(
       { type: 'custom-title', customTitle: 'Bob', sessionId: SESSION },
       { type: 'agent-color', agentColor: 'red', sessionId: SESSION },
     );
-    process();
+    await process();
     expect(watcher.getKnownMetadata(SESSION)).toMatchObject({ name: 'Bob', color: 'red' });
 
     append({ type: 'agent-name', agentName: 'Alice', sessionId: SESSION });
-    process();
+    await process();
     expect(watcher.getKnownMetadata(SESSION)).toMatchObject({ name: 'Alice', color: 'red' });
   });
 
-  it('ignores entries for other sessions', () => {
+  it('ignores entries for other sessions', async () => {
     append({ type: 'agent-name', agentName: 'Intruder', sessionId: 'other-session' });
-    process();
+    await process();
     expect(watcher.getKnownMetadata(SESSION)).toBeNull();
   });
 });
 
 describe('assistant-turn metadata', () => {
-  it('extracts model, effort, and context fill from usage', () => {
+  it('extracts model, effort, and context fill from usage', async () => {
     append(
       assistant(
         'claude-opus-4-8',
@@ -81,7 +81,7 @@ describe('assistant-turn metadata', () => {
         { effort: 'high' },
       ),
     );
-    process();
+    await process();
     expect(watcher.getKnownMetadata(SESSION)).toMatchObject({
       model: 'claude-opus-4-8',
       effort: 'high',
@@ -90,11 +90,11 @@ describe('assistant-turn metadata', () => {
     });
   });
 
-  it('skips synthetic sidechain turns entirely', () => {
+  it('skips synthetic sidechain turns entirely', async () => {
     append(assistant('claude-opus-4-8', { input_tokens: 500 }, { effort: 'high' }));
-    process();
+    await process();
     append(assistant('<synthetic>', { input_tokens: 999_999 }, { effort: 'low' }));
-    process();
+    await process();
     expect(watcher.getKnownMetadata(SESSION)).toMatchObject({
       model: 'claude-opus-4-8',
       effort: 'high',
@@ -102,39 +102,39 @@ describe('assistant-turn metadata', () => {
     });
   });
 
-  it('uses the 1M window when settings.json selects a [1m] model', () => {
+  it('uses the 1M window when settings.json selects a [1m] model', async () => {
     fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify({ model: 'opus[1m]' }));
     append(assistant('claude-opus-4-8', { input_tokens: 30_000 }));
-    process();
+    await process();
     expect(watcher.getKnownMetadata(SESSION)).toMatchObject({
       contextTokens: 30_000,
       contextLimit: 1_000_000,
     });
   });
 
-  it('latches the 1M window when a turn exceeds 200k without settings', () => {
+  it('latches the 1M window when a turn exceeds 200k without settings', async () => {
     append(assistant('claude-opus-4-8', { input_tokens: 250_000 }));
-    process();
+    await process();
     expect(watcher.getKnownMetadata(SESSION)).toMatchObject({ contextLimit: 1_000_000 });
   });
 
-  it('keeps the previous fill when a turn reports no usage', () => {
+  it('keeps the previous fill when a turn reports no usage', async () => {
     append(assistant('claude-opus-4-8', { input_tokens: 700 }));
-    process();
+    await process();
     append(assistant('claude-opus-4-8'));
-    process();
+    await process();
     expect(watcher.getKnownMetadata(SESSION)).toMatchObject({ contextTokens: 700 });
   });
 });
 
 describe('emissions', () => {
-  it('emits only the fields that changed, keyed by the registered tab', () => {
+  it('emits only the fields that changed, keyed by the registered tab', async () => {
     append({ type: 'agent-name', agentName: 'Bob', sessionId: SESSION });
-    process();
+    await process();
     expect(emitted).toEqual([{ tabId: TAB, name: 'Bob' }]);
 
     append(assistant('claude-opus-4-8', { input_tokens: 100 }, { effort: 'high' }));
-    process();
+    await process();
     expect(emitted[1]).toEqual({
       tabId: TAB,
       model: 'claude-opus-4-8',
@@ -144,45 +144,45 @@ describe('emissions', () => {
     });
   });
 
-  it('does not emit when re-reading yields no change', () => {
+  it('does not emit when re-reading yields no change', async () => {
     append({ type: 'agent-name', agentName: 'Bob', sessionId: SESSION });
-    process();
+    await process();
     append({ type: 'agent-name', agentName: 'Bob', sessionId: SESSION });
-    process();
+    await process();
     expect(emitted).toHaveLength(1);
   });
 
-  it('defers a partial trailing line until its newline arrives', () => {
+  it('defers a partial trailing line until its newline arrives', async () => {
     append({ type: 'agent-name', agentName: 'Bob', sessionId: SESSION });
     fs.appendFileSync(transcriptPath, '{"type":"agent-name","agentName":"Par');
-    process();
+    await process();
     expect(watcher.getKnownMetadata(SESSION)).toMatchObject({ name: 'Bob' });
 
     fs.appendFileSync(transcriptPath, 'tial","sessionId":"' + SESSION + '"}\n');
-    process();
+    await process();
     expect(watcher.getKnownMetadata(SESSION)).toMatchObject({ name: 'Partial' });
   });
 
-  it('re-reads from scratch after truncation', () => {
+  it('re-reads from scratch after truncation', async () => {
     append(
       { type: 'agent-name', agentName: 'Bob', sessionId: SESSION },
       { type: 'agent-color', agentColor: 'red', sessionId: SESSION },
     );
-    process();
+    await process();
     // Shorter than the tracked offset, so the watcher must restart from byte 0.
     fs.writeFileSync(transcriptPath, JSON.stringify({ type: 'agent-name', agentName: 'New', sessionId: SESSION }) + '\n');
-    process();
+    await process();
     expect(watcher.getKnownMetadata(SESSION)).toMatchObject({ name: 'New' });
   });
 });
 
 describe('getKnownMetadata', () => {
-  it('is null before anything has been read', () => {
+  it('is null before anything has been read', async () => {
     expect(watcher.getKnownMetadata('never-seen')).toBeNull();
   });
 
-  it('is null for an empty transcript', () => {
-    process();
+  it('is null for an empty transcript', async () => {
+    await process();
     expect(watcher.getKnownMetadata(SESSION)).toBeNull();
   });
 });

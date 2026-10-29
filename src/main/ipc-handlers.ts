@@ -7,13 +7,13 @@ import type { AgentType, TabState, TabCreateRequest, RecentlyClosedTab, Preferen
 import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
 import { SessionTracker } from './session-tracker';
-import type { CodexSessionRef } from './codex-session-tracker';
+import type { CodexSessionRef, CodexSessionRuntime } from './codex-session-tracker';
 import { SessionMetadataWatcher } from './session-metadata-watcher';
 import { HistoryWatcher } from './history-watcher';
 import { AgentRegistry } from './agent-registry';
 import { detectAvailableAgents } from './agent-detection';
 import { getGitInfo } from './git-info';
-import { detectCodexAttention, detectStatus } from './status-detection';
+import { detectCodexAttention, detectCodexProgramStatus, detectStatus, trailingPartialOsc } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
 import { CodexCommandTracker } from './codex-command-tracker';
 import { normalizeTabColor } from '../shared/tab-colors';
@@ -113,7 +113,7 @@ export function registerIpcHandlers(
   // so we use it to keep the owning tab in sync. Attribution is best-effort and must not
   // hijack a session another same-folder tab already owns (#109) — see the helper.
   const historyWatcher = new HistoryWatcher(async ({ project, sessionId }) => {
-    const tab = selectTabForHistoryRollforward(
+    const tab = await selectTabForHistoryRollforward(
       Array.from(tabs.values()), project, sessionId, readLiveSessionIds,
     );
     if (!tab) return;
@@ -131,7 +131,7 @@ export function registerIpcHandlers(
     tab.sessionId = sessionId;
     tab.lastActivityAt = Date.now();
     ptyManager.setSessionId(tab.id, sessionId);
-    metadataWatcher.registerTab(tab.id, sessionId);
+    void metadataWatcher.registerTab(tab.id, sessionId);
     saveTabState();
     safeSend(IPC.TAB_SESSION, { tabId: tab.id, sessionId });
   });
@@ -141,7 +141,7 @@ export function registerIpcHandlers(
     stateManager.setTabs(Array.from(tabs.values()));
     const activeTab = Array.from(tabs.values()).find(t => t.isActive);
     stateManager.setActiveTabId(activeTab?.id ?? null);
-    stateManager.save();
+    void stateManager.save();
   }
 
   function setCodexTabColor(tabId: string, color: string | null): void {
@@ -155,12 +155,15 @@ export function registerIpcHandlers(
     safeSend(IPC.TAB_METADATA, { tabId, color } satisfies TabMetadataMessage);
   }
 
+  // Tabs whose Codex reports its own status (OSC 7501); older releases fall back to the rollout and title.
+  const codexReportingTabs = new Set<string>();
+  const codexOscTails = new Map<string, string>();
   const knownCodexSessions = new Set<string>();
   const claimedCodexSessions = new Set<string>();
   let codexInventoryReady = false;
   let codexPollRunning = false;
 
-  function adoptCodexSession(tab: TabState, ref: CodexSessionRef): void {
+  async function adoptCodexSession(tab: TabState, ref: CodexSessionRef): Promise<void> {
     if (tab.agent !== 'codex' || !tabs.has(tab.id)) return;
     let durable = false;
     const metadata: TabMetadataMessage = { tabId: tab.id };
@@ -183,7 +186,10 @@ export function registerIpcHandlers(
       metadata.name = ref.name;
       durable = true;
     }
-    const runtime = sessionTracker.getCodexSessionRuntime(ref);
+    const fetched = await sessionTracker.getCodexSessionRuntime(ref);
+    if (!tabs.has(tab.id)) return;
+    // The tab may have adopted another session while the rollout was being read.
+    const runtime: CodexSessionRuntime = tab.sessionId === ref.sessionId ? fetched : { status: null };
     if (runtime.model && tab.model !== runtime.model) {
       tab.model = runtime.model;
       metadata.model = runtime.model;
@@ -205,7 +211,7 @@ export function registerIpcHandlers(
     // The rollout remains "running" while Codex is paused at an approval prompt.
     // Keep the terminal-derived attention state latched until the user answers it.
     const isPendingCodexApproval = tab.status === 'attention' && runtime.status === 'running';
-    if (runtime.status && tab.status !== runtime.status && tab.status !== 'stopped' && !isPendingCodexApproval) {
+    if (runtime.status && !codexReportingTabs.has(tab.id) && tab.status !== runtime.status && tab.status !== 'stopped' && !isPendingCodexApproval) {
       tab.status = runtime.status;
       safeSend(IPC.TAB_STATUS, { tabId: tab.id, status: runtime.status });
     }
@@ -230,7 +236,7 @@ export function registerIpcHandlers(
       if (next) {
         knownCodexSessions.add(next.sessionId);
         const tab = tabs.get(tabId);
-        if (tab) adoptCodexSession(tab, next);
+        if (tab) await adoptCodexSession(tab, next);
         return;
       }
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -255,7 +261,7 @@ export function registerIpcHandlers(
           );
           const tab = candidates.find(candidate => candidate.isActive)
             ?? candidates.sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
-          if (tab && !claimedCodexSessions.has(ref.sessionId)) adoptCodexSession(tab, ref);
+          if (tab && !claimedCodexSessions.has(ref.sessionId)) await adoptCodexSession(tab, ref);
         }
       }
 
@@ -264,7 +270,7 @@ export function registerIpcHandlers(
         if (tab.agent !== 'codex') continue;
         const ref = byId.get(tab.sessionId);
         if (!ref) continue;
-        adoptCodexSession(tab, ref);
+        await adoptCodexSession(tab, ref);
       }
     } catch {
       // Codex may be migrating or replacing its state database; retry next poll.
@@ -285,14 +291,6 @@ export function registerIpcHandlers(
     if (!availableAgents[requestedAgent]) {
       throw new Error(`${requestedAgent === 'codex' ? 'Codex' : 'Claude Code'} CLI was not detected`);
     }
-    const codexSessionsBefore = requestedAgent === 'codex' && !request.resumeSessionId
-      ? new Set(
-          (await sessionTracker.getCodexSessionRefs())
-            .filter(ref => normalizeFolder(ref.project) === normalizeFolder(request.folder))
-            .map(ref => ref.sessionId),
-        )
-      : null;
-
     // A background agent's session can't be resumed while its process is alive — the CLI
     // refuses and points you at `claude agents`. Every path that reopens a session (tab
     // restore, sidebar click, recently-closed) lands here, so resolve it once, here:
@@ -301,15 +299,26 @@ export function registerIpcHandlers(
       ? await agentRegistry.getBackgroundAgent(request.resumeSessionId)
       : undefined;
 
-    // A session Claude never persisted — e.g. a tab opened but never used before the app
-    // was closed — has no transcript, so `claude --resume` prints "No conversation found"
-    // into the tab. Fall back to a fresh session so the tab reopens cleanly. Live
-    // background agents are exempt: they attach, and needn't have a transcript yet.
+    // A session the agent never persisted — e.g. a tab opened but never used before it
+    // was closed — can't be resumed: Claude prints "No conversation found" and Codex "No
+    // saved session found" into the tab. Fall back to a fresh session so the tab reopens
+    // cleanly. Live background agents are exempt: they attach, and needn't have a
+    // transcript yet.
     let resumeSessionId = request.resumeSessionId;
-    if (requestedAgent === 'claude' && resumeSessionId && !backgroundAgent
-        && !(await sessionTracker.canResume(request.folder, resumeSessionId))) {
-      resumeSessionId = undefined;
+    if (resumeSessionId && !backgroundAgent) {
+      const resumable = requestedAgent === 'codex'
+        ? !!(await sessionTracker.getCodexSessionRef(resumeSessionId))
+        : await sessionTracker.canResume(request.folder, resumeSessionId);
+      if (!resumable) resumeSessionId = undefined;
     }
+
+    const codexSessionsBefore = requestedAgent === 'codex' && !resumeSessionId
+      ? new Set(
+          (await sessionTracker.getCodexSessionRefs())
+            .filter(ref => normalizeFolder(ref.project) === normalizeFolder(request.folder))
+            .map(ref => ref.sessionId),
+        )
+      : null;
 
     const { sessionId } = ptyManager.spawn(tabId, requestedAgent, request.folder, {
       resumeSessionId,
@@ -343,10 +352,17 @@ export function registerIpcHandlers(
           currentTab.status = newStatus;
           safeSend(IPC.TAB_STATUS, { tabId, status: newStatus });
         }
-      } else if (currentTab?.agent === 'codex' && currentTab.status !== 'stopped'
-        && currentTab.status !== 'attention' && detectCodexAttention(data)) {
-        currentTab.status = 'attention';
-        safeSend(IPC.TAB_STATUS, { tabId, status: 'attention' });
+      } else if (currentTab?.agent === 'codex' && currentTab.status !== 'stopped') {
+        const scanned = (codexOscTails.get(tabId) ?? '') + data;
+        codexOscTails.set(tabId, trailingPartialOsc(scanned));
+        const reported = detectCodexProgramStatus(scanned);
+        if (reported) codexReportingTabs.add(tabId);
+        const newStatus = reported
+          ?? (!codexReportingTabs.has(tabId) && detectCodexAttention(data) ? 'attention' : null);
+        if (newStatus && newStatus !== currentTab.status) {
+          currentTab.status = newStatus;
+          safeSend(IPC.TAB_STATUS, { tabId, status: newStatus });
+        }
       }
 
       safeSend(IPC.PTY_DATA, { tabId, data });
@@ -372,7 +388,7 @@ export function registerIpcHandlers(
 
     // Register Claude first so the initial transcript read can seed all known metadata.
     // Codex metadata comes from its thread inventory and rollout transcript instead.
-    if (requestedAgent === 'claude') metadataWatcher.registerTab(tabId, sessionId);
+    if (requestedAgent === 'claude') await metadataWatcher.registerTab(tabId, sessionId);
 
     const knownClaude = requestedAgent === 'claude'
       ? metadataWatcher.getKnownMetadata(sessionId)
@@ -381,7 +397,7 @@ export function registerIpcHandlers(
       ? await sessionTracker.getCodexSessionRef(sessionId)
       : undefined;
     const knownCodexRuntime = knownCodex
-      ? sessionTracker.getCodexSessionRuntime(knownCodex)
+      ? await sessionTracker.getCodexSessionRuntime(knownCodex)
       : undefined;
     const knownCodexColor = requestedAgent === 'codex'
       ? stateManager.getCodexSessionColor(sessionId)
@@ -411,7 +427,8 @@ export function registerIpcHandlers(
       isActive: true,
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
-      status: resumeSessionId ? 'resuming' : 'running',
+      // Codex records nothing until the first prompt, so its rollout can't report idle.
+      status: resumeSessionId ? 'resuming' : requestedAgent === 'codex' ? 'waiting' : 'running',
     };
 
     // Mark all other tabs as not active
@@ -440,6 +457,8 @@ export function registerIpcHandlers(
     const tab = tabs.get(tabId);
     if (tab?.agent === 'claude') metadataWatcher.unregisterTab(tab.sessionId);
     if (tab?.agent === 'codex') claimedCodexSessions.delete(tab.sessionId);
+    codexReportingTabs.delete(tabId);
+    codexOscTails.delete(tabId);
     codexCommandTracker.forget(tabId);
     await ptyManager.gracefulKill(tabId);
     tabs.delete(tabId);
@@ -497,11 +516,13 @@ export function registerIpcHandlers(
       }
       // Enter submits the Codex composer. Publish running before forwarding it so the
       // renderer hides the caret before Codex begins its first animated redraw.
+      // A Codex that reports its own status (OSC 7501) won't repeat one we overwrite here.
+      const guessesStatus = !codexReportingTabs.has(tabId);
       const isCodexSubmit = tab.agent === 'codex' && tab.status === 'waiting' && data === '\r';
-      if (tab.status === 'resuming' || isCodexSubmit) {
+      if (guessesStatus && (tab.status === 'resuming' || isCodexSubmit)) {
         tab.status = 'running';
         safeSend(IPC.TAB_STATUS, { tabId, status: 'running' });
-      } else if (tab.status === 'attention') {
+      } else if (guessesStatus && tab.status === 'attention') {
         // Ignore cursor sequences (arrow-key navigation in selection prompts),
         // both CSI (ESC[A) and SS3 (ESC OA) forms. A bare Escape is not
         // navigation — it dismisses the prompt or screen (e.g. /usage),
@@ -613,12 +634,12 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.SIDEBAR_STATE, async (_event, sidebar: { width: number; collapsed: boolean }) => {
     stateManager.setSidebar(sidebar);
-    stateManager.save();
+    void stateManager.save();
   });
 
   ipcMain.handle(IPC.RECENTLY_CLOSED, async (_event, items: RecentlyClosedTab[]) => {
     stateManager.setRecentlyClosed(items);
-    stateManager.save();
+    void stateManager.save();
     rebuildMenu?.(items);
   });
 
@@ -658,7 +679,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.UPDATE_DISMISS, async (_event, version: string) => {
     stateManager.setDismissedUpdateVersion(version);
-    stateManager.save();
+    void stateManager.save();
   });
 
   // Used by the About window (sendSync) to show any known update
@@ -687,7 +708,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.PREFERENCES_SAVE, async (_event, prefs: Preferences) => {
     const oldPrefs = stateManager.getPreferences();
     stateManager.setPreferences(prefs);
-    stateManager.save();
+    void stateManager.save();
     safeSend('preferences:changed', prefs);
 
     if (

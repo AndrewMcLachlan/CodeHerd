@@ -19,37 +19,37 @@ afterEach(() => {
 });
 
 describe('readLiveSessionIds', () => {
-  it('returns the session ids of running processes', () => {
+  it('returns the session ids of running processes', async () => {
     write('100.json', { pid: 100, sessionId: 'sid-a' });
     write('200.json', { pid: 200, sessionId: 'sid-b' });
-    expect(readLiveSessionIds(dir, () => true)).toEqual(new Set(['sid-a', 'sid-b']));
+    expect(await readLiveSessionIds(dir, () => true)).toEqual(new Set(['sid-a', 'sid-b']));
   });
 
-  it('drops session files whose process has exited', () => {
+  it('drops session files whose process has exited', async () => {
     write('100.json', { pid: 100, sessionId: 'sid-a' });
     write('200.json', { pid: 200, sessionId: 'sid-b' });
-    expect(readLiveSessionIds(dir, (pid) => pid === 200)).toEqual(new Set(['sid-b']));
+    expect(await readLiveSessionIds(dir, (pid) => pid === 200)).toEqual(new Set(['sid-b']));
   });
 
-  it('ignores the sibling .key files Claude writes', () => {
+  it('ignores the sibling .key files Claude writes', async () => {
     write('100.json', { pid: 100, sessionId: 'sid-a' });
     write('100.abc123.key', 'not json');
-    expect(readLiveSessionIds(dir, () => true)).toEqual(new Set(['sid-a']));
+    expect(await readLiveSessionIds(dir, () => true)).toEqual(new Set(['sid-a']));
   });
 
-  it('skips malformed or partially written files', () => {
+  it('skips malformed or partially written files', async () => {
     write('100.json', { pid: 100, sessionId: 'sid-a' });
     write('200.json', '{"pid":200,"sessi');
     write('300.json', { pid: 300 });
     write('400.json', { sessionId: 'sid-d' });
-    expect(readLiveSessionIds(dir, () => true)).toEqual(new Set(['sid-a']));
+    expect(await readLiveSessionIds(dir, () => true)).toEqual(new Set(['sid-a']));
   });
 
-  it('returns an empty set when the directory does not exist', () => {
-    expect(readLiveSessionIds(path.join(dir, 'missing'), () => true)).toEqual(new Set());
+  it('returns an empty set when the directory does not exist', async () => {
+    expect(await readLiveSessionIds(path.join(dir, 'missing'), () => true)).toEqual(new Set());
   });
 
-  it('treats a live pid owned by another user as alive', () => {
+  it('treats a live pid owned by another user as alive', async () => {
     write('100.json', { pid: 100, sessionId: 'sid-a' });
     const isAlive = (pid: number): boolean => {
       try {
@@ -60,6 +60,6 @@ describe('readLiveSessionIds', () => {
         return (e as NodeJS.ErrnoException).code === 'EPERM' && pid === 100;
       }
     };
-    expect(readLiveSessionIds(dir, isAlive)).toEqual(new Set(['sid-a']));
+    expect(await readLiveSessionIds(dir, isAlive)).toEqual(new Set(['sid-a']));
   });
 });

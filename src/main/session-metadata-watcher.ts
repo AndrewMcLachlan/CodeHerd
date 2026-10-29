@@ -37,6 +37,7 @@ export class SessionMetadataWatcher {
   private sessionToTab = new Map<SessionId, TabId>();
   private lastSeen = new Map<SessionId, MetadataState>();
   private offsets = new Map<SessionId, number>();
+  private reads = new Map<SessionId, Promise<void>>();
   private pending = new Map<string, NodeJS.Timeout>();
   private cachedDefaultLimit: number | null = null;
   private cachedDefaultLimitAt = 0;
@@ -55,14 +56,14 @@ export class SessionMetadataWatcher {
    * Read it (cached briefly) so a 1M user sees fill against 1M from the first turn, instead of
    * the 200k default until a turn happens to exceed 200k. Re-read cheaply to pick up /model changes.
    */
-  private defaultContextLimit(): number {
+  private async defaultContextLimit(): Promise<number> {
     const now = Date.now();
     if (this.cachedDefaultLimit !== null && now - this.cachedDefaultLimitAt < 10_000) {
       return this.cachedDefaultLimit;
     }
     let limit = STANDARD_CONTEXT_LIMIT;
     try {
-      const settings = JSON.parse(fs.readFileSync(path.join(this.claudeDir, 'settings.json'), 'utf-8'));
+      const settings = JSON.parse(await fs.promises.readFile(path.join(this.claudeDir, 'settings.json'), 'utf-8'));
       if (typeof settings?.model === 'string' && settings.model.includes('[1m]')) {
         limit = LARGE_CONTEXT_LIMIT;
       }
@@ -98,11 +99,9 @@ export class SessionMetadataWatcher {
       this.rootWatcher = fs.watch(this.projectsDir, (_event, filename) => {
         if (!filename) return;
         const dir = path.join(this.projectsDir, filename.toString());
-        try {
-          if (fs.statSync(dir).isDirectory()) this.watchProjectDir(dir);
-        } catch {
-          // entry no longer exists
-        }
+        fs.stat(dir, (err, stat) => {
+          if (!err && stat.isDirectory()) this.watchProjectDir(dir);
+        });
       });
     } catch {
       // some filesystems disallow watching the parent; we just won't pick up new project dirs live
@@ -118,12 +117,11 @@ export class SessionMetadataWatcher {
     this.pending.clear();
   }
 
-  registerTab(tabId: TabId, sessionId: SessionId): void {
+  /** Resolves once a resumed session's existing transcript has been read, so getKnownMetadata() can seed the tab's first render. */
+  async registerTab(tabId: TabId, sessionId: SessionId): Promise<void> {
     this.sessionToTab.set(sessionId, tabId);
-    // Resumed sessions may already have a transcript on disk — do an initial read so
-    // getKnownMetadata() can synchronously seed the tab's first render.
-    const jsonl = this.findTranscript(sessionId);
-    if (jsonl) this.processFile(sessionId, jsonl);
+    const jsonl = await this.findTranscript(sessionId);
+    if (jsonl) await this.processFile(sessionId, jsonl);
   }
 
   unregisterTab(sessionId: SessionId): void {
@@ -156,12 +154,17 @@ export class SessionMetadataWatcher {
     }
   }
 
-  private findTranscript(sessionId: SessionId): string | null {
+  private async findTranscript(sessionId: SessionId): Promise<string | null> {
     try {
-      for (const entry of fs.readdirSync(this.projectsDir, { withFileTypes: true })) {
+      for (const entry of await fs.promises.readdir(this.projectsDir, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
         const candidate = path.join(this.projectsDir, entry.name, `${sessionId}.jsonl`);
-        if (fs.existsSync(candidate)) return candidate;
+        try {
+          await fs.promises.access(candidate);
+          return candidate;
+        } catch {
+          // not in this project
+        }
       }
     } catch {
       // ignore
@@ -175,18 +178,29 @@ export class SessionMetadataWatcher {
     if (existing) clearTimeout(existing);
     this.pending.set(key, setTimeout(() => {
       this.pending.delete(key);
-      this.processFile(sessionId, file);
+      void this.processFile(sessionId, file);
     }, 50));
+  }
+
+  /** Reads of one session run in turn; overlapping reads would scan the same appended bytes twice. */
+  private processFile(sessionId: SessionId, file: string): Promise<void> {
+    const read = (this.reads.get(sessionId) ?? Promise.resolve())
+      .then(() => this.readAppended(sessionId, file));
+    this.reads.set(sessionId, read);
+    void read.finally(() => {
+      if (this.reads.get(sessionId) === read) this.reads.delete(sessionId);
+    });
+    return read;
   }
 
   /**
    * Read whatever has been appended since the last call, scan the new lines for slash-command
    * markers, and emit a TabMetadataMessage if name or color actually changed.
    */
-  private processFile(sessionId: SessionId, file: string): void {
+  private async readAppended(sessionId: SessionId, file: string): Promise<void> {
     let size: number;
     try {
-      size = fs.statSync(file).size;
+      size = (await fs.promises.stat(file)).size;
     } catch {
       return;
     }
@@ -198,18 +212,20 @@ export class SessionMetadataWatcher {
 
     let chunk: string;
     try {
-      const fd = fs.openSync(file, 'r');
+      const handle = await fs.promises.open(file, 'r');
       try {
         const len = size - start;
         const buf = Buffer.alloc(len);
-        fs.readSync(fd, buf, 0, len, start);
+        await handle.read(buf, 0, len, start);
         chunk = buf.toString('utf-8');
       } finally {
-        fs.closeSync(fd);
+        await handle.close();
       }
     } catch {
       return;
     }
+
+    const defaultLimit = await this.defaultContextLimit();
 
     // Only process up to the last newline — anything after may be a partial write.
     const lastNl = chunk.lastIndexOf('\n');
@@ -275,7 +291,7 @@ export class SessionMetadataWatcher {
               // Measure against the user's configured window (1M for opus[1m]), and latch upward
               // if a turn ever exceeds it — the denominator never understates the real window.
               const observed = total > STANDARD_CONTEXT_LIMIT ? LARGE_CONTEXT_LIMIT : STANDARD_CONTEXT_LIMIT;
-              contextLimit = Math.max(contextLimit ?? 0, this.defaultContextLimit(), observed);
+              contextLimit = Math.max(contextLimit ?? 0, defaultLimit, observed);
             }
           }
           break;

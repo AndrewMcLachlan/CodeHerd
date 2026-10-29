@@ -1,5 +1,5 @@
 import * as pty from 'node-pty';
-import { execSync } from 'child_process';
+import { execFile } from 'child_process';
 import type { AgentType, TabId, FolderPath, SessionId } from '../shared/types';
 import { v4 as uuidv4 } from 'uuid';
 import { getLoginShellEnv } from './claude-cli';
@@ -125,7 +125,7 @@ export class PtyManager {
   private forceKillTree(pid: number): void {
     try {
       if (process.platform === 'win32') {
-        execSync(`taskkill /T /F /PID ${pid}`, { stdio: 'ignore' });
+        execFile('taskkill', ['/T', '/F', '/PID', String(pid)], { windowsHide: true }, () => {});
       } else {
         process.kill(-pid, 'SIGKILL');
       }

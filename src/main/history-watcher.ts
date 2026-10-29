@@ -25,6 +25,8 @@ export class HistoryWatcher {
   private watcher: fs.FSWatcher | null = null;
   private offset = 0;
   private pending: NodeJS.Timeout | null = null;
+  // Reads run in turn, after the offset is seeded, so no entry is reported twice or replayed from history.
+  private reads: Promise<void> = Promise.resolve();
 
   constructor(private onEntry: (entry: HistoryEntry) => void | Promise<void>) {}
 
@@ -32,11 +34,10 @@ export class HistoryWatcher {
     if (this.watcher) return;
 
     // Seed the offset to the current end of file so we only react to NEW prompts.
-    try {
-      this.offset = fs.statSync(CLAUDE_HISTORY_FILE).size;
-    } catch {
-      this.offset = 0;
-    }
+    this.reads = fs.promises.stat(CLAUDE_HISTORY_FILE).then(
+      stat => { this.offset = stat.size; },
+      () => { this.offset = 0; },
+    );
 
     // Watch the .claude dir (rather than the file directly) so we still react if the
     // history file is created or rotated after we start.
@@ -60,15 +61,15 @@ export class HistoryWatcher {
     if (this.pending) return;
     this.pending = setTimeout(() => {
       this.pending = null;
-      this.process();
+      this.reads = this.reads.then(() => this.process());
     }, 50);
   }
 
   /** Read whatever has been appended since the last call and emit each complete entry. */
-  private process(): void {
+  private async process(): Promise<void> {
     let size: number;
     try {
-      size = fs.statSync(CLAUDE_HISTORY_FILE).size;
+      size = (await fs.promises.stat(CLAUDE_HISTORY_FILE)).size;
     } catch {
       return;
     }
@@ -79,14 +80,14 @@ export class HistoryWatcher {
 
     let chunk: string;
     try {
-      const fd = fs.openSync(CLAUDE_HISTORY_FILE, 'r');
+      const handle = await fs.promises.open(CLAUDE_HISTORY_FILE, 'r');
       try {
         const len = size - this.offset;
         const buf = Buffer.alloc(len);
-        fs.readSync(fd, buf, 0, len, this.offset);
+        await handle.read(buf, 0, len, this.offset);
         chunk = buf.toString('utf-8');
       } finally {
-        fs.closeSync(fd);
+        await handle.close();
       }
     } catch {
       return;

@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as inspector from 'inspector';
 import * as path from 'path';
 
 /**
@@ -115,6 +116,70 @@ export function diagnosticsLogPath(logDir: string): string {
   return path.join(logDir, 'diagnostics.log');
 }
 
+/** A stall at least this long saves the CPU profile that covers it. */
+const profiledStallMs = 2_000;
+/** Samples older than this are discarded unsaved, bounding the profiler's memory. */
+const profileWindowMs = 120_000;
+/** Coarse sampling keeps a profile spanning a minutes-long stall small. */
+const profileSamplingMicros = 10_000;
+const keptProfiles = 5;
+
+/**
+ * Samples the main process continuously and saves the window around a long stall as a
+ * `.cpuprofile` (open it in DevTools' Performance panel), keeping only the newest few.
+ */
+function startStallProfiler(logDir: string, write: (line: string) => void) {
+  const session = new inspector.Session();
+  let startedAt = Date.now();
+  let running = false;
+
+  const start = () => {
+    session.post('Profiler.start', (err) => {
+      running = !err;
+      startedAt = Date.now();
+    });
+  };
+
+  const prune = () => {
+    try {
+      const profiles = fs.readdirSync(logDir).filter(name => /^stall-.+\.cpuprofile$/.test(name)).sort();
+      for (const name of profiles.slice(0, -keptProfiles)) fs.rmSync(path.join(logDir, name), { force: true });
+    } catch {
+      // Best-effort; a leftover profile is harmless.
+    }
+  };
+
+  try {
+    session.connect();
+    session.post('Profiler.enable');
+    session.post('Profiler.setSamplingInterval', { interval: profileSamplingMicros });
+    start();
+  } catch (err) {
+    write(`profiler unavailable: ${String(err)}`);
+  }
+
+  return {
+    afterTick(lag: number) {
+      if (!running) return;
+      const save = lag >= profiledStallMs;
+      if (!save && Date.now() - startedAt < profileWindowMs) return;
+      running = false;
+      session.post('Profiler.stop', (err, result) => {
+        start();
+        if (err || !save) return;
+        const name = `stall-${new Date().toISOString().replace(/[:.]/g, '-')}.cpuprofile`;
+        fs.writeFile(path.join(logDir, name), JSON.stringify(result.profile), (writeErr) => {
+          write(writeErr ? `profile not saved: ${writeErr.message}` : `profile saved: ${name}`);
+          prune();
+        });
+      });
+    },
+    stop() {
+      session.disconnect();
+    },
+  };
+}
+
 let active: Diagnostics | null = null;
 
 /** The running diagnostics logger, or null when instrumentation is off. */
@@ -192,6 +257,7 @@ export function startDiagnostics(
   // eslint-disable-next-line no-console
   console.log(`[diag] logging to ${logPath}`);
   write(`=== diagnostics started (stall threshold ${thresholdMs}ms) ===`);
+  const profiler = startStallProfiler(logDir, write);
 
   let chunks = 0;
   let bytes = 0;
@@ -222,6 +288,7 @@ export function startDiagnostics(
       sinceHeartbeatBytes = 0;
       lastHeartbeatAt = now;
     }
+    profiler.afterTick(lag);
     expected = now + intervalMs;
     timer = setTimeout(tick, intervalMs);
   };
@@ -232,6 +299,7 @@ export function startDiagnostics(
     countOutput: (n) => { chunks += 1; bytes += n; },
     stop: () => {
       clearTimeout(timer);
+      profiler.stop();
       write('=== diagnostics stopped ===');
       stream.end();
       active = null;

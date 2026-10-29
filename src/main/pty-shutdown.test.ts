@@ -37,10 +37,11 @@ vi.mock('child_process', () => ({
   execSync: vi.fn(() => {
     throw new Error('blocked in tests');
   }),
+  execFile: vi.fn(),
   execFileSync: vi.fn(() => '7'),
 }));
 
-const { execSync } = await import('child_process');
+const { execFile } = await import('child_process');
 const { PtyManager } = await import('./pty-manager');
 
 let manager: InstanceType<typeof PtyManager>;
@@ -101,9 +102,11 @@ describe('gracefulKill', () => {
     await vi.advanceTimersByTimeAsync(5000);
     await expect(kill).resolves.toBeUndefined();
     if (process.platform === 'win32') {
-      expect(vi.mocked(execSync)).toHaveBeenCalledWith(
-        expect.stringContaining('taskkill /T /F /PID 4242'),
+      expect(vi.mocked(execFile)).toHaveBeenCalledWith(
+        'taskkill',
+        ['/T', '/F', '/PID', '4242'],
         expect.anything(),
+        expect.any(Function),
       );
     } else {
       expect(killSpy).toHaveBeenCalledWith(-4242, 'SIGKILL');

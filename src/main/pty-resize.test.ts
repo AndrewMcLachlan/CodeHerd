@@ -31,6 +31,7 @@ vi.mock('child_process', () => ({
   execSync: vi.fn(() => {
     throw new Error('blocked in tests');
   }),
+  execFile: vi.fn(),
   execFileSync: vi.fn(() => '7'),
 }));
 
