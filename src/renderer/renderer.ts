@@ -372,13 +372,9 @@ async function init(): Promise<void> {
     statusBar.showDiagnostics(logPath);
   });
 
-  // When terminal title changes, update status bar
+  // Repaints only the title: Claude's spinner retitles the tab many times a turn.
   terminalManager.setOnTitleChange((tabId, title) => {
     statusBar.setTerminalTitle(tabId, title);
-    const active = tabManager.getActiveTab();
-    if (active && active.id === tabId) {
-      statusBar.update(active.launchFolder, active.id, toStatusMeta(active));
-    }
   });
 
   // When a session is clicked in the sidebar, open it in a new tab

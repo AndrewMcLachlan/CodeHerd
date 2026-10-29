@@ -27,6 +27,8 @@ export class StatusBar {
   private meta = new Map<TabId, StatusMeta>();
   /** Last-known git info per folder, so switching back to a folder paints instantly. */
   private gitCache = new Map<string, GitInfo>();
+  /** A lookup still running is shared rather than repeated, so git processes never pile up. */
+  private gitLookups = new Map<string, Promise<GitInfo>>();
   /** Monotonic token: a refresh only paints if it's still the most recent one issued. */
   private refreshSeq = 0;
 
@@ -59,6 +61,16 @@ export class StatusBar {
 
   setTerminalTitle(tabId: TabId, title: string): void {
     this.titles.set(tabId, title);
+    if (tabId === this.currentTabId) this.applyTitle(title);
+  }
+
+  private applyTitle(title: string | null | undefined): void {
+    if (title) {
+      this.titleEl.textContent = title;
+      this.titleEl.classList.remove('hidden');
+    } else {
+      this.titleEl.classList.add('hidden');
+    }
   }
 
   /** Record a tab's session indicators and repaint immediately if it's the one on screen. */
@@ -95,13 +107,7 @@ export class StatusBar {
     this.applyMeta(activeTabId ? this.meta.get(activeTabId) : undefined);
 
     // Terminal title (right side)
-    const title = activeTabId ? this.titles.get(activeTabId) : null;
-    if (title) {
-      this.titleEl.textContent = title;
-      this.titleEl.classList.remove('hidden');
-    } else {
-      this.titleEl.classList.add('hidden');
-    }
+    this.applyTitle(activeTabId ? this.titles.get(activeTabId) : null);
 
     // On a folder change, repaint git immediately from cache (or blank it) so the
     // previous tab's branch never lingers while the fresh lookup is in flight.
@@ -120,7 +126,12 @@ export class StatusBar {
   private async refreshGit(folder: string): Promise<void> {
     const seq = ++this.refreshSeq;
     try {
-      const git = await window.codeherd.getGitInfo(folder);
+      let lookup = this.gitLookups.get(folder);
+      if (!lookup) {
+        lookup = window.codeherd.getGitInfo(folder).finally(() => this.gitLookups.delete(folder));
+        this.gitLookups.set(folder, lookup);
+      }
+      const git = await lookup;
       this.gitCache.set(folder, git);
       // Drop stale resolutions: a newer refresh (e.g. the user switched tabs again)
       // has superseded this one, so don't let it overwrite the current display.
