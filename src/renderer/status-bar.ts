@@ -19,7 +19,6 @@ export class StatusBar {
   private diagnosticsEl: HTMLElement;
   /** Set once at startup; the badge is a mode indicator, not per-tab state. */
   private diagnosticsShown = false;
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
   private currentFolder: string | null = null;
   private currentTabId: TabId | null = null;
   private titles = new Map<TabId, string>();
@@ -31,6 +30,7 @@ export class StatusBar {
   private gitLookups = new Map<string, Promise<GitInfo>>();
   /** Monotonic token: a refresh only paints if it's still the most recent one issued. */
   private refreshSeq = 0;
+  private unsubscribeGit: () => void;
 
   constructor() {
     this.element = document.getElementById('status-bar')!;
@@ -41,6 +41,10 @@ export class StatusBar {
     this.modelEl = document.getElementById('status-model')!;
     this.contextEl = document.getElementById('status-context')!;
     this.diagnosticsEl = document.getElementById('status-diagnostics')!;
+    this.unsubscribeGit = window.codeherd.onGitInfoChanged(({ folder, info }) => {
+      this.gitCache.set(folder, info);
+      if (folder === this.currentFolder) this.applyGit(info);
+    });
   }
 
   /**
@@ -91,7 +95,6 @@ export class StatusBar {
       this.clearGit();
       this.applyMeta(undefined);
       this.element.classList.toggle('hidden', !this.diagnosticsShown);
-      this.stopPolling();
       return;
     }
 
@@ -116,7 +119,6 @@ export class StatusBar {
       const cached = this.gitCache.get(folder);
       if (cached) this.applyGit(cached);
       else this.clearGit();
-      this.startPolling(folder);
     }
 
     // Git info (async; may resolve after a later switch — guarded by refreshSeq)
@@ -232,22 +234,6 @@ export class StatusBar {
     return parts.join('\n');
   }
 
-  private startPolling(folder: string): void {
-    this.stopPolling();
-    this.pollTimer = setInterval(() => {
-      if (this.currentFolder === folder) {
-        this.refreshGit(folder);
-      }
-    }, 5000);
-  }
-
-  private stopPolling(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
-  }
-
   private shortenPath(p: string): string {
     const home = this.getHome();
     if (home && p.toLowerCase().startsWith(home.toLowerCase())) {
@@ -268,6 +254,6 @@ export class StatusBar {
   }
 
   dispose(): void {
-    this.stopPolling();
+    this.unsubscribeGit();
   }
 }
