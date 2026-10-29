@@ -12,7 +12,7 @@ import { SessionMetadataWatcher } from './session-metadata-watcher';
 import { HistoryWatcher } from './history-watcher';
 import { AgentRegistry } from './agent-registry';
 import { detectAvailableAgents } from './agent-detection';
-import { getGitInfo } from './git-info';
+import { GitWatcher } from './git-info';
 import { detectCodexAttention, detectCodexProgramStatus, detectStatus, trailingPartialOsc } from './status-detection';
 import { getAvailableUpdate } from './update-checker';
 import { CodexCommandTracker } from './codex-command-tracker';
@@ -105,6 +105,8 @@ export function registerIpcHandlers(
     if (changed) safeSend(IPC.TAB_METADATA, msg);
   });
   metadataWatcher.start();
+
+  const gitWatcher = new GitWatcher((folder, info) => safeSend(IPC.GIT_INFO_CHANGED, { folder, info }));
 
   // A tab's sessionId is captured once, at spawn. But Claude rolls it forward mid-tab
   // (notably `/clear`, which starts a new conversation under a new id), and nothing
@@ -629,7 +631,7 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle(IPC.GIT_INFO, async (_event, { folder }: { folder: string }) => {
-    return getGitInfo(folder);
+    return gitWatcher.get(folder);
   });
 
   ipcMain.handle(IPC.SIDEBAR_STATE, async (_event, sidebar: { width: number; collapsed: boolean }) => {

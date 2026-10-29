@@ -36,6 +36,7 @@ declare global {
       clipboardRead: () => Promise<string>;
       clipboardHasImage: () => Promise<boolean>;
       getGitInfo: (folder: string) => Promise<GitInfo>;
+      onGitInfoChanged: (cb: (msg: { folder: string; info: GitInfo }) => void) => () => void;
       saveSidebarState: (sidebar: { width: number; collapsed: boolean }) => Promise<void>;
       saveRecentlyClosed: (items: RecentlyClosedTab[]) => Promise<void>;
       menuAction: (action: string) => Promise<void>;

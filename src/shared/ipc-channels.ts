@@ -31,6 +31,7 @@ export const IPC = {
   PTY_EXIT: 'pty:exit',
   TAB_STATUS: 'tab:status',
   TAB_METADATA: 'tab:metadata',
+  GIT_INFO_CHANGED: 'git:info-changed',
   TAB_SESSION: 'tab:session',
   TAB_COLOR_PICKER: 'tab:color-picker',
   THEME_CHANGED: 'theme:changed',

@@ -84,6 +84,11 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.on(IPC.DIAGNOSTICS_STARTED, listener);
     return () => { ipcRenderer.removeListener(IPC.DIAGNOSTICS_STARTED, listener); };
   },
+  onGitInfoChanged: (callback: (msg: { folder: string; info: GitInfo }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, msg: { folder: string; info: GitInfo }) => callback(msg);
+    ipcRenderer.on(IPC.GIT_INFO_CHANGED, listener);
+    return () => { ipcRenderer.removeListener(IPC.GIT_INFO_CHANGED, listener); };
+  },
   onUpdateAvailable: (callback: (info: UpdateInfo) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, info: UpdateInfo) => callback(info);
     ipcRenderer.on(IPC.UPDATE_AVAILABLE, listener);
