@@ -46,7 +46,7 @@ describe('load', () => {
     expect(sm.getState()).toEqual(DEFAULT_APP_STATE);
   });
 
-  it('round-trips state through save and a fresh instance', () => {
+  it('round-trips state through save and a fresh instance', async () => {
     const sm = new StateManager(dir);
     sm.setTabs([tab(), tab({ id: 'tab-2', sessionId: 'session-2', status: 'waiting', color: '#f38ba8' })]);
     sm.setActiveTabId('tab-2');
@@ -55,7 +55,7 @@ describe('load', () => {
     ]);
     sm.setCodexSessionColor('session-9', 'red');
     sm.setPreferences({ ...DEFAULT_PREFERENCES, fontSize: 14 });
-    sm.save();
+    await sm.save();
 
     const reloaded = new StateManager(dir);
     expect(reloaded.getState()).toEqual(sm.getState());
@@ -137,12 +137,12 @@ describe('corruption recovery', () => {
 });
 
 describe('save', () => {
-  it('backs up the previous valid state file before overwriting it', () => {
+  it('backs up the previous valid state file before overwriting it', async () => {
     const sm = new StateManager(dir);
     sm.setTabs([tab()]);
-    sm.save();
+    await sm.save();
     sm.setTabs([tab(), tab({ id: 'tab-2', sessionId: 'session-2' })]);
-    sm.save();
+    await sm.save();
 
     const backup = JSON.parse(fs.readFileSync(backupFile(), 'utf-8'));
     expect(backup.tabs).toHaveLength(1);
@@ -150,22 +150,22 @@ describe('save', () => {
     expect(current.tabs).toHaveLength(2);
   });
 
-  it('does not replace a good backup with a corrupt current file', () => {
+  it('does not replace a good backup with a corrupt current file', async () => {
     const good = validState();
     fs.writeFileSync(backupFile(), JSON.stringify(good));
     fs.writeFileSync(stateFile(), '{broken');
 
     const sm = new StateManager(dir); // recovers from backup
-    sm.save();
+    await sm.save();
 
     const backup = JSON.parse(fs.readFileSync(backupFile(), 'utf-8'));
     expect(backup.tabs).toHaveLength(1); // still the good state, not "{broken"
   });
 
-  it('ignores a leftover tmp file from an interrupted write', () => {
+  it('ignores a leftover tmp file from an interrupted write', async () => {
     const sm = new StateManager(dir);
     sm.setTabs([tab()]);
-    sm.save();
+    await sm.save();
     fs.writeFileSync(stateFile() + '.tmp', '{"version":1,"tabs":[{"id'); // simulated crash mid-write
 
     const reloaded = new StateManager(dir);

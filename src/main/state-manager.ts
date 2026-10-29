@@ -7,6 +7,9 @@ export class StateManager {
   private state: AppState;
   private readonly stateFile: string;
   private readonly backupFile: string;
+  private queued: string | null = null;
+  private writing: Promise<void> | null = null;
+  private closed = false;
 
   /** The caller picks the directory (see main.ts for the live/dev split). */
   constructor(private readonly stateDir: string) {
@@ -75,11 +78,25 @@ export class StateManager {
     }
   }
 
-  save(): void {
+  /** Resolves once the state as it is now has been written. Saves made during a write are coalesced into the next one. */
+  save(): Promise<void> {
+    this.queued = JSON.stringify(this.state, null, 2);
+    this.writing ??= this.drain();
+    return this.writing;
+  }
+
+  /** Writes synchronously and stops further background writes, for use while quitting. */
+  saveNow(): void {
+    this.closed = true;
+    this.queued = null;
     try {
       fs.mkdirSync(this.stateDir, { recursive: true });
-      this.backUpCurrentIfValid();
-      // Write-then-rename so an interrupted write never truncates state.json itself.
+      try {
+        const current = fs.readFileSync(this.stateFile, 'utf-8');
+        if (JSON.parse(current).version === 1) fs.writeFileSync(this.backupFile, current, 'utf-8');
+      } catch {
+        // missing or corrupt — leave any existing backup in place
+      }
       const tmpFile = this.stateFile + '.tmp';
       fs.writeFileSync(tmpFile, JSON.stringify(this.state, null, 2), 'utf-8');
       fs.renameSync(tmpFile, this.stateFile);
@@ -88,14 +105,37 @@ export class StateManager {
     }
   }
 
+  private async drain(): Promise<void> {
+    try {
+      while (this.queued !== null && !this.closed) {
+        const json = this.queued;
+        this.queued = null;
+        try {
+          await fs.promises.mkdir(this.stateDir, { recursive: true });
+          await this.backUpCurrentIfValid();
+          // Write-then-rename so an interrupted write never truncates state.json itself.
+          const tmpFile = this.stateFile + '.tmp';
+          await fs.promises.writeFile(tmpFile, json, 'utf-8');
+          if (this.closed) return;
+          await fs.promises.rename(tmpFile, this.stateFile);
+        } catch (err) {
+          console.error('Failed to save state:', err);
+        }
+      }
+    } finally {
+      // Cleared in the same turn the queue is found empty, so a later save() always starts a new drain.
+      this.writing = null;
+    }
+  }
+
   /**
    * Keep the outgoing state file as the last-known-good backup — but only if it
    * actually parses, so a corrupt file never replaces an older good backup.
    */
-  private backUpCurrentIfValid(): void {
+  private async backUpCurrentIfValid(): Promise<void> {
     try {
-      const parsed = JSON.parse(fs.readFileSync(this.stateFile, 'utf-8'));
-      if (parsed.version === 1) fs.copyFileSync(this.stateFile, this.backupFile);
+      const current = await fs.promises.readFile(this.stateFile, 'utf-8');
+      if (JSON.parse(current).version === 1) await fs.promises.writeFile(this.backupFile, current, 'utf-8');
     } catch {
       // missing or corrupt — leave any existing backup in place
     }

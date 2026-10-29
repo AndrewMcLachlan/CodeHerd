@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as readline from 'readline';
-import { DatabaseSync } from 'node:sqlite';
+import { Worker } from 'worker_threads';
 import { isCustomCodexSessionName } from '../shared/agents';
 import type { AgentSession, FolderPath, SessionId } from '../shared/types';
 import { getLoginShellEnv } from './claude-cli';
@@ -69,11 +69,84 @@ function getEnvValue(env: Record<string, string>, name: string): string | undefi
   return key ? env[key] : undefined;
 }
 
+async function exists(file: string): Promise<boolean> {
+  try {
+    await fs.promises.access(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Must stay inline: a worker script file can't be loaded from inside app.asar.
+const threadQueryWorkerSource = `
+const { parentPort } = require('worker_threads');
+const { DatabaseSync } = require('node:sqlite');
+let database = null;
+let databasePath = null;
+const close = () => {
+  try { database?.close(); } catch {}
+  database = null;
+  databasePath = null;
+};
+parentPort.on('message', ({ id, path }) => {
+  try {
+    if (databasePath !== path) {
+      close();
+      database = new DatabaseSync(path, { readOnly: true });
+      databasePath = path;
+    }
+    const rows = database.prepare(
+      'SELECT id, cwd, title, first_user_message, preview, updated_at_ms, created_at_ms, archived, rollout_path FROM threads WHERE archived = 0'
+    ).all();
+    parentPort.postMessage({ id, rows });
+  } catch (err) {
+    close();
+    parentPort.postMessage({ id, error: String(err) });
+  }
+});
+`;
+
+/** Runs Codex's thread query on a worker thread, since node:sqlite only blocks. */
+class ThreadQueryWorker {
+  private worker: Worker | null = null;
+  private nextId = 0;
+  private pending = new Map<number, { resolve: (rows: CodexThreadRow[]) => void; reject: (err: Error) => void }>();
+
+  query(databasePath: string): Promise<CodexThreadRow[]> {
+    const worker = this.worker ??= this.start();
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      worker.postMessage({ id, path: databasePath });
+    });
+  }
+
+  private start(): Worker {
+    const worker = new Worker(threadQueryWorkerSource, { eval: true });
+    worker.unref();
+    worker.on('message', ({ id, rows, error }: { id: number; rows?: CodexThreadRow[]; error?: string }) => {
+      const request = this.pending.get(id);
+      this.pending.delete(id);
+      if (error !== undefined) request?.reject(new Error(error));
+      else request?.resolve(rows ?? []);
+    });
+    const fail = (err: Error) => {
+      if (this.worker === worker) this.worker = null;
+      for (const request of this.pending.values()) request.reject(err);
+      this.pending.clear();
+    };
+    worker.on('error', fail);
+    worker.on('exit', code => fail(new Error(`thread query worker exited (${code})`)));
+    return worker;
+  }
+}
+
 /** Reads Codex's saved interactive thread inventory without starting another CLI process. */
 export class CodexSessionTracker {
-  private database: DatabaseSync | null = null;
-  private databasePath: string | null = null;
+  private threadQueries = new ThreadQueryWorker();
   private runtimeCache = new Map<SessionId, RuntimeCacheEntry>();
+  private runtimeReads = new Map<SessionId, Promise<CodexSessionRuntime>>();
   private readonly codexHome: string;
   private readonly sqliteHome: string;
 
@@ -94,8 +167,8 @@ export class CodexSessionTracker {
     // Only worth diagnosing when the list came back empty. Both the SQLite database
     // and the transcript directory are optional individually, but neither present
     // means Codex has not run — or keeps its history somewhere new.
-    const storeExists = fs.existsSync(path.join(this.codexHome, 'sessions'))
-      || fs.existsSync(this.sqliteHome);
+    const storeExists = await exists(path.join(this.codexHome, 'sessions'))
+      || await exists(this.sqliteHome);
     return {
       sessions,
       problem: diagnoseSessionListing({ storeExists, linesRead: 0, linesParsed: 0, sessions: 0 }),
@@ -124,7 +197,7 @@ export class CodexSessionTracker {
   }
 
   async getAllSessionRefs(): Promise<CodexSessionRef[]> {
-    const databaseRows = this.readDatabaseRows();
+    const databaseRows = await this.readDatabaseRows();
     if (databaseRows) return databaseRows;
     return this.readTranscriptRows();
   }
@@ -137,20 +210,29 @@ export class CodexSessionTracker {
    * Reads the most recent Codex turn lifecycle event without parsing prompt or response text.
    * A bounded tail read keeps the one-second inventory poll inexpensive for long sessions.
    */
-  getSessionStatus(ref: CodexSessionRef): CodexSessionStatus | null {
-    return this.getSessionRuntime(ref).status;
+  async getSessionStatus(ref: CodexSessionRef): Promise<CodexSessionStatus | null> {
+    return (await this.getSessionRuntime(ref)).status;
   }
 
   /**
    * Incrementally reads structured rollout events for the status bar. The first call
    * seeds from the transcript; subsequent one-second polls parse appended bytes only.
    */
-  getSessionRuntime(ref: CodexSessionRef): CodexSessionRuntime {
+  getSessionRuntime(ref: CodexSessionRef): Promise<CodexSessionRuntime> {
+    // Overlapping reads of one rollout would parse the same appended bytes twice.
+    const inflight = this.runtimeReads.get(ref.sessionId);
+    if (inflight) return inflight;
+    const read = this.readSessionRuntime(ref).finally(() => this.runtimeReads.delete(ref.sessionId));
+    this.runtimeReads.set(ref.sessionId, read);
+    return read;
+  }
+
+  private async readSessionRuntime(ref: CodexSessionRef): Promise<CodexSessionRuntime> {
     if (!ref.rolloutPath) return { status: null };
 
-    let handle: number | null = null;
+    let handle: fs.promises.FileHandle | null = null;
     try {
-      const stat = fs.statSync(ref.rolloutPath);
+      const stat = await fs.promises.stat(ref.rolloutPath);
       let cached = this.runtimeCache.get(ref.sessionId);
       if (!cached || cached.rolloutPath !== ref.rolloutPath || stat.size < cached.offset) {
         cached = {
@@ -163,8 +245,8 @@ export class CodexSessionTracker {
 
       if (stat.size > cached.offset) {
         const buffer = Buffer.alloc(stat.size - cached.offset);
-        handle = fs.openSync(ref.rolloutPath, 'r');
-        const bytesRead = fs.readSync(handle, buffer, 0, buffer.length, cached.offset);
+        handle = await fs.promises.open(ref.rolloutPath, 'r');
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, cached.offset);
         const combined = Buffer.concat([cached.carry, buffer.subarray(0, bytesRead)]);
         const lastNewline = combined.lastIndexOf(10);
         if (lastNewline >= 0) {
@@ -184,35 +266,28 @@ export class CodexSessionTracker {
     } catch {
       return this.runtimeCache.get(ref.sessionId)?.runtime ?? { status: null };
     } finally {
-      if (handle !== null) fs.closeSync(handle);
+      await handle?.close();
     }
   }
 
-  private readDatabaseRows(): CodexSessionRef[] | null {
-    const database = this.getDatabase();
-    if (!database) return null;
+  private async readDatabaseRows(): Promise<CodexSessionRef[] | null> {
+    const databasePath = await this.findDatabasePath();
+    if (!databasePath) return null;
 
     try {
-      const rows = database.prepare(`
-        SELECT id, cwd, title, first_user_message, preview,
-               updated_at_ms, created_at_ms, archived, rollout_path
-        FROM threads
-        WHERE archived = 0
-      `).all() as unknown as CodexThreadRow[];
+      const rows = (await this.threadQueries.query(databasePath))
+        .filter(row => typeof row.id === 'string' && typeof row.cwd === 'string')
+        .map(row => ({
+          row,
+          rolloutPath: row.rollout_path
+            ? (path.isAbsolute(row.rollout_path) ? row.rollout_path : path.join(this.codexHome, row.rollout_path))
+            : undefined,
+        }));
+      const present = await Promise.all(rows.map(({ rolloutPath }) => !rolloutPath || exists(rolloutPath)));
 
       return rows
-        .filter(row => typeof row.id === 'string' && typeof row.cwd === 'string')
-        .filter(row => {
-          if (!row.rollout_path) return true;
-          const rolloutPath = path.isAbsolute(row.rollout_path)
-            ? row.rollout_path
-            : path.join(this.codexHome, row.rollout_path);
-          return fs.existsSync(rolloutPath);
-        })
-        .map(row => {
-          const rolloutPath = row.rollout_path
-            ? (path.isAbsolute(row.rollout_path) ? row.rollout_path : path.join(this.codexHome, row.rollout_path))
-            : undefined;
+        .filter((_, index) => present[index])
+        .map(({ row, rolloutPath }) => {
           const name = row.title?.trim();
           return {
             sessionId: row.id,
@@ -227,30 +302,13 @@ export class CodexSessionTracker {
           };
         });
     } catch {
-      this.closeDatabase();
       return null;
     }
   }
 
-  private getDatabase(): DatabaseSync | null {
-    const nextPath = this.findDatabasePath();
-    if (!nextPath) return null;
-    if (this.database && this.databasePath === nextPath) return this.database;
-
-    this.closeDatabase();
+  private async findDatabasePath(): Promise<string | null> {
     try {
-      this.database = new DatabaseSync(nextPath, { readOnly: true });
-      this.databasePath = nextPath;
-      return this.database;
-    } catch {
-      this.closeDatabase();
-      return null;
-    }
-  }
-
-  private findDatabasePath(): string | null {
-    try {
-      const candidates = fs.readdirSync(this.sqliteHome)
+      const candidates = (await fs.promises.readdir(this.sqliteHome))
         .map(name => ({ name, match: /^state_(\d+)\.sqlite$/.exec(name) }))
         .filter((item): item is { name: string; match: RegExpExecArray } => !!item.match)
         .sort((a, b) => Number(b.match[1]) - Number(a.match[1]));
@@ -260,23 +318,13 @@ export class CodexSessionTracker {
     }
   }
 
-  private closeDatabase(): void {
-    try {
-      this.database?.close();
-    } catch {
-      // The file may have been replaced during a Codex state migration.
-    }
-    this.database = null;
-    this.databasePath = null;
-  }
-
   /** Fallback for older Codex releases without the SQLite thread inventory. */
-  private readTranscriptRows(): CodexSessionRef[] {
+  private async readTranscriptRows(): Promise<CodexSessionRef[]> {
     const sessionsDir = path.join(this.codexHome, 'sessions');
     const refs: CodexSessionRef[] = [];
 
-    for (const file of this.walkJsonlFiles(sessionsDir)) {
-      const firstLine = this.readFirstLine(file);
+    for (const file of await this.walkJsonlFiles(sessionsDir)) {
+      const firstLine = await this.readFirstLine(file);
       if (!firstLine) continue;
       try {
         const row = JSON.parse(firstLine);
@@ -287,7 +335,7 @@ export class CodexSessionTracker {
           sessionId,
           project: row.payload.cwd.replace(/^\\\\\?\\/, ''),
           lastPrompt: '',
-          timestamp: Date.parse(row.payload.timestamp) || fs.statSync(file).mtimeMs,
+          timestamp: Date.parse(row.payload.timestamp) || (await fs.promises.stat(file)).mtimeMs,
           rolloutPath: file,
         });
       } catch {
@@ -298,14 +346,14 @@ export class CodexSessionTracker {
     return refs;
   }
 
-  private walkJsonlFiles(root: string): string[] {
+  private async walkJsonlFiles(root: string): Promise<string[]> {
     const files: string[] = [];
     const pending = [root];
     while (pending.length > 0) {
       const dir = pending.pop()!;
       let entries: fs.Dirent[];
       try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
+        entries = await fs.promises.readdir(dir, { withFileTypes: true });
       } catch {
         continue;
       }
@@ -318,15 +366,15 @@ export class CodexSessionTracker {
     return files;
   }
 
-  private readFirstLine(file: string): string | null {
-    let handle: number | null = null;
+  private async readFirstLine(file: string): Promise<string | null> {
+    let handle: fs.promises.FileHandle | null = null;
     try {
-      handle = fs.openSync(file, 'r');
+      handle = await fs.promises.open(file, 'r');
       const chunks: Buffer[] = [];
       let position = 0;
       for (let i = 0; i < 8; i++) {
         const buffer = Buffer.alloc(64 * 1024);
-        const bytesRead = fs.readSync(handle, buffer, 0, buffer.length, position);
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
         if (bytesRead === 0) break;
         const chunk = buffer.subarray(0, bytesRead);
         const newline = chunk.indexOf(10);
@@ -338,7 +386,7 @@ export class CodexSessionTracker {
     } catch {
       return null;
     } finally {
-      if (handle !== null) fs.closeSync(handle);
+      await handle?.close();
     }
   }
 
@@ -347,7 +395,7 @@ export class CodexSessionTracker {
     if (sessionIds.size === 0) return summaries;
 
     const historyPath = path.join(this.codexHome, 'history.jsonl');
-    if (!fs.existsSync(historyPath)) return summaries;
+    if (!(await exists(historyPath))) return summaries;
 
     let stream: fs.ReadStream;
     try {

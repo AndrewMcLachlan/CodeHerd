@@ -148,7 +148,7 @@ function createWindow(): void {
         const wb = windowBoundsToPersist(mainWindow);
         if (wb) {
           stateManager.setWindowBounds(wb);
-          stateManager.save();
+          void stateManager.save();
         }
       }
     }, 1000);
@@ -188,7 +188,7 @@ function createWindow(): void {
 
       // Persist current tab state before killing PTYs, so tabs can be restored on restart.
       // (gracefulKill sets status to 'stopped', which would prevent restoration.)
-      stateManager.save();
+      stateManager.saveNow();
 
       // Graceful shutdown, then exit (no async/await - use promise chain)
       ptyManager.gracefulKillAll()

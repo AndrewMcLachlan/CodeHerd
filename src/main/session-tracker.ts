@@ -55,16 +55,18 @@ export class SessionTracker {
     return this.codex.getSessionRef(sessionId);
   }
 
-  getCodexSessionStatus(ref: CodexSessionRef): CodexSessionStatus | null {
+  getCodexSessionStatus(ref: CodexSessionRef): Promise<CodexSessionStatus | null> {
     return this.codex.getSessionStatus(ref);
   }
 
-  getCodexSessionRuntime(ref: CodexSessionRef): CodexSessionRuntime {
+  getCodexSessionRuntime(ref: CodexSessionRef): Promise<CodexSessionRuntime> {
     return this.codex.getSessionRuntime(ref);
   }
 
   private async getClaudeSessionsForFolder(folder: FolderPath): Promise<SessionListing> {
-    if (!fs.existsSync(this.historyFile)) {
+    try {
+      await fs.promises.access(this.historyFile);
+    } catch {
       return { sessions: [], problem: diagnoseSessionListing({ storeExists: false, linesRead: 0, linesParsed: 0, sessions: 0 }) };
     }
 

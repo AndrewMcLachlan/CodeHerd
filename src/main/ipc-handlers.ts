@@ -7,7 +7,7 @@ import type { AgentType, TabState, TabCreateRequest, RecentlyClosedTab, Preferen
 import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
 import { SessionTracker } from './session-tracker';
-import type { CodexSessionRef } from './codex-session-tracker';
+import type { CodexSessionRef, CodexSessionRuntime } from './codex-session-tracker';
 import { SessionMetadataWatcher } from './session-metadata-watcher';
 import { HistoryWatcher } from './history-watcher';
 import { AgentRegistry } from './agent-registry';
@@ -113,7 +113,7 @@ export function registerIpcHandlers(
   // so we use it to keep the owning tab in sync. Attribution is best-effort and must not
   // hijack a session another same-folder tab already owns (#109) — see the helper.
   const historyWatcher = new HistoryWatcher(async ({ project, sessionId }) => {
-    const tab = selectTabForHistoryRollforward(
+    const tab = await selectTabForHistoryRollforward(
       Array.from(tabs.values()), project, sessionId, readLiveSessionIds,
     );
     if (!tab) return;
@@ -131,7 +131,7 @@ export function registerIpcHandlers(
     tab.sessionId = sessionId;
     tab.lastActivityAt = Date.now();
     ptyManager.setSessionId(tab.id, sessionId);
-    metadataWatcher.registerTab(tab.id, sessionId);
+    void metadataWatcher.registerTab(tab.id, sessionId);
     saveTabState();
     safeSend(IPC.TAB_SESSION, { tabId: tab.id, sessionId });
   });
@@ -141,7 +141,7 @@ export function registerIpcHandlers(
     stateManager.setTabs(Array.from(tabs.values()));
     const activeTab = Array.from(tabs.values()).find(t => t.isActive);
     stateManager.setActiveTabId(activeTab?.id ?? null);
-    stateManager.save();
+    void stateManager.save();
   }
 
   function setCodexTabColor(tabId: string, color: string | null): void {
@@ -163,7 +163,7 @@ export function registerIpcHandlers(
   let codexInventoryReady = false;
   let codexPollRunning = false;
 
-  function adoptCodexSession(tab: TabState, ref: CodexSessionRef): void {
+  async function adoptCodexSession(tab: TabState, ref: CodexSessionRef): Promise<void> {
     if (tab.agent !== 'codex' || !tabs.has(tab.id)) return;
     let durable = false;
     const metadata: TabMetadataMessage = { tabId: tab.id };
@@ -186,7 +186,10 @@ export function registerIpcHandlers(
       metadata.name = ref.name;
       durable = true;
     }
-    const runtime = sessionTracker.getCodexSessionRuntime(ref);
+    const fetched = await sessionTracker.getCodexSessionRuntime(ref);
+    if (!tabs.has(tab.id)) return;
+    // The tab may have adopted another session while the rollout was being read.
+    const runtime: CodexSessionRuntime = tab.sessionId === ref.sessionId ? fetched : { status: null };
     if (runtime.model && tab.model !== runtime.model) {
       tab.model = runtime.model;
       metadata.model = runtime.model;
@@ -233,7 +236,7 @@ export function registerIpcHandlers(
       if (next) {
         knownCodexSessions.add(next.sessionId);
         const tab = tabs.get(tabId);
-        if (tab) adoptCodexSession(tab, next);
+        if (tab) await adoptCodexSession(tab, next);
         return;
       }
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -258,7 +261,7 @@ export function registerIpcHandlers(
           );
           const tab = candidates.find(candidate => candidate.isActive)
             ?? candidates.sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
-          if (tab && !claimedCodexSessions.has(ref.sessionId)) adoptCodexSession(tab, ref);
+          if (tab && !claimedCodexSessions.has(ref.sessionId)) await adoptCodexSession(tab, ref);
         }
       }
 
@@ -267,7 +270,7 @@ export function registerIpcHandlers(
         if (tab.agent !== 'codex') continue;
         const ref = byId.get(tab.sessionId);
         if (!ref) continue;
-        adoptCodexSession(tab, ref);
+        await adoptCodexSession(tab, ref);
       }
     } catch {
       // Codex may be migrating or replacing its state database; retry next poll.
@@ -385,7 +388,7 @@ export function registerIpcHandlers(
 
     // Register Claude first so the initial transcript read can seed all known metadata.
     // Codex metadata comes from its thread inventory and rollout transcript instead.
-    if (requestedAgent === 'claude') metadataWatcher.registerTab(tabId, sessionId);
+    if (requestedAgent === 'claude') await metadataWatcher.registerTab(tabId, sessionId);
 
     const knownClaude = requestedAgent === 'claude'
       ? metadataWatcher.getKnownMetadata(sessionId)
@@ -394,7 +397,7 @@ export function registerIpcHandlers(
       ? await sessionTracker.getCodexSessionRef(sessionId)
       : undefined;
     const knownCodexRuntime = knownCodex
-      ? sessionTracker.getCodexSessionRuntime(knownCodex)
+      ? await sessionTracker.getCodexSessionRuntime(knownCodex)
       : undefined;
     const knownCodexColor = requestedAgent === 'codex'
       ? stateManager.getCodexSessionColor(sessionId)
@@ -631,12 +634,12 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.SIDEBAR_STATE, async (_event, sidebar: { width: number; collapsed: boolean }) => {
     stateManager.setSidebar(sidebar);
-    stateManager.save();
+    void stateManager.save();
   });
 
   ipcMain.handle(IPC.RECENTLY_CLOSED, async (_event, items: RecentlyClosedTab[]) => {
     stateManager.setRecentlyClosed(items);
-    stateManager.save();
+    void stateManager.save();
     rebuildMenu?.(items);
   });
 
@@ -676,7 +679,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC.UPDATE_DISMISS, async (_event, version: string) => {
     stateManager.setDismissedUpdateVersion(version);
-    stateManager.save();
+    void stateManager.save();
   });
 
   // Used by the About window (sendSync) to show any known update
@@ -705,7 +708,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.PREFERENCES_SAVE, async (_event, prefs: Preferences) => {
     const oldPrefs = stateManager.getPreferences();
     stateManager.setPreferences(prefs);
-    stateManager.save();
+    void stateManager.save();
     safeSend('preferences:changed', prefs);
 
     if (

@@ -20,14 +20,14 @@ function pidIsAlive(pid: number): boolean {
  * is still on that session and cannot be the tab that rolled forward to a new one.
  * Files outlive their process, hence the liveness check.
  */
-export function readLiveSessionIds(
+export async function readLiveSessionIds(
   dir: string = CLAUDE_SESSIONS_DIR,
   isAlive: (pid: number) => boolean = pidIsAlive,
-): Set<string> {
+): Promise<Set<string>> {
   const live = new Set<string>();
   let names: string[];
   try {
-    names = fs.readdirSync(dir);
+    names = await fs.promises.readdir(dir);
   } catch {
     return live;
   }
@@ -35,7 +35,7 @@ export function readLiveSessionIds(
   for (const name of names) {
     if (!name.endsWith('.json')) continue;
     try {
-      const entry: unknown = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf-8'));
+      const entry: unknown = JSON.parse(await fs.promises.readFile(path.join(dir, name), 'utf-8'));
       const record = entry as { pid?: unknown; sessionId?: unknown };
       if (typeof record.pid !== 'number' || typeof record.sessionId !== 'string') continue;
       if (isAlive(record.pid)) live.add(record.sessionId);
