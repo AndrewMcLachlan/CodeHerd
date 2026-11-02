@@ -138,6 +138,7 @@ function sameInfo(a: GitInfo, b: GitInfo): boolean {
  * Git state for one folder, read from the files in `.git` and kept current by watching them
  * and the working tree. git itself only runs for the two things the files can't answer
  * cheaply: whether the tree is dirty, and how far apart the branch and its upstream are.
+ * Dirtiness is left stale while an agent is busy in the folder and checked once it stops.
  */
 class FolderGit {
   private current: Promise<GitInfo> | null = null;
@@ -145,6 +146,7 @@ class FolderGit {
   private repoKey: string | null = null;
   private watchers: { close(): void }[] = [];
   private statusStale = true;
+  private statusKnown = false;
   private dirty = false;
   private aheadBehindKey = '';
   private aheadBehind = { ahead: 0, behind: 0 };
@@ -152,10 +154,15 @@ class FolderGit {
   private firstChangeAt = 0;
   private closed = false;
 
-  constructor(readonly folder: FolderPath, private onChange: (info: GitInfo) => void) {}
+  constructor(readonly folder: FolderPath, private onChange: (info: GitInfo) => void, private isBusy: () => boolean) {}
 
   info(): Promise<GitInfo> {
     return this.current ??= this.refresh().then(info => this.last = info);
+  }
+
+  /** An agent in this folder stopped: catch up on any changes it made. */
+  settle(): void {
+    if (this.statusStale) this.changed('status');
   }
 
   dispose(): void {
@@ -171,7 +178,10 @@ class FolderGit {
 
   private changed(kind: 'status' | 'refs'): void {
     if (this.closed) return;
-    if (kind === 'status') this.statusStale = true;
+    if (kind === 'status') {
+      this.statusStale = true;
+      if (this.isBusy()) return;
+    }
     const now = Date.now();
     if (!this.settleTimer) this.firstChangeAt = now;
     else clearTimeout(this.settleTimer);
@@ -221,11 +231,12 @@ class FolderGit {
     info.ahead = ahead;
     info.behind = behind;
 
-    if (this.statusStale) {
+    if (this.statusStale && (!this.statusKnown || !this.isBusy())) {
       this.statusStale = false;
       try {
         const status = await exec('git', ['status', '--porcelain=v2'], this.folder);
         this.dirty = status.split('\n').some(line => /^[12u?]/.test(line));
+        this.statusKnown = true;
       } catch {
         this.statusStale = true;
       }
@@ -313,15 +324,20 @@ class FolderGit {
 export class GitWatcher {
   private active: FolderGit | null = null;
 
-  constructor(private onChange: (folder: FolderPath, info: GitInfo) => void) {}
+  constructor(private onChange: (folder: FolderPath, info: GitInfo) => void, private isBusy: (folder: FolderPath) => boolean = () => false) {}
 
   get(folder: FolderPath): Promise<GitInfo> {
     if (this.active?.folder !== folder) {
       this.active?.dispose();
-      const active = new FolderGit(folder, info => this.onChange(folder, info));
+      const active = new FolderGit(folder, info => this.onChange(folder, info), () => this.isBusy(folder));
       this.active = active;
     }
     return this.active.info();
+  }
+
+  /** Call when an agent working in `folder` stops, so the dirty indicator catches up. */
+  settle(folder: FolderPath): void {
+    if (this.active?.folder === folder) this.active.settle();
   }
 
   dispose(): void {

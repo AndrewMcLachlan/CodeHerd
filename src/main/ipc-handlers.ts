@@ -106,7 +106,15 @@ export function registerIpcHandlers(
   });
   metadataWatcher.start();
 
-  const gitWatcher = new GitWatcher((folder, info) => safeSend(IPC.GIT_INFO_CHANGED, { folder, info }));
+  const busyStatuses = new Set<TabState['status']>(['running', 'resuming']);
+  const gitWatcher = new GitWatcher(
+    (folder, info) => safeSend(IPC.GIT_INFO_CHANGED, { folder, info }),
+    folder => Array.from(tabs.values()).some(tab => tab.launchFolder === folder && busyStatuses.has(tab.status)),
+  );
+
+  function settleGitIfIdle(tab: TabState): void {
+    if (!busyStatuses.has(tab.status)) gitWatcher.settle(tab.launchFolder);
+  }
 
   // A tab's sessionId is captured once, at spawn. But Claude rolls it forward mid-tab
   // (notably `/clear`, which starts a new conversation under a new id), and nothing
@@ -216,6 +224,7 @@ export function registerIpcHandlers(
     if (runtime.status && !codexReportingTabs.has(tab.id) && tab.status !== runtime.status && tab.status !== 'stopped' && !isPendingCodexApproval) {
       tab.status = runtime.status;
       safeSend(IPC.TAB_STATUS, { tabId: tab.id, status: runtime.status });
+      settleGitIfIdle(tab);
     }
     if (durable) saveTabState();
   }
@@ -353,6 +362,7 @@ export function registerIpcHandlers(
         if (newStatus) {
           currentTab.status = newStatus;
           safeSend(IPC.TAB_STATUS, { tabId, status: newStatus });
+          settleGitIfIdle(currentTab);
         }
       } else if (currentTab?.agent === 'codex' && currentTab.status !== 'stopped') {
         const scanned = (codexOscTails.get(tabId) ?? '') + data;
@@ -364,6 +374,7 @@ export function registerIpcHandlers(
         if (newStatus && newStatus !== currentTab.status) {
           currentTab.status = newStatus;
           safeSend(IPC.TAB_STATUS, { tabId, status: newStatus });
+          settleGitIfIdle(currentTab);
         }
       }
 
@@ -375,6 +386,7 @@ export function registerIpcHandlers(
       const currentTab = tabs.get(tabId);
       if (currentTab) {
         currentTab.status = 'stopped';
+        settleGitIfIdle(currentTab);
         // Don't save 'stopped' state during shutdown — we want tabs to restore on restart
         if (!isQuitting()) {
           saveTabState();
@@ -536,6 +548,7 @@ export function registerIpcHandlers(
           const nextStatus = tab.agent === 'codex' ? 'running' : 'waiting';
           tab.status = nextStatus;
           safeSend(IPC.TAB_STATUS, { tabId, status: nextStatus });
+          settleGitIfIdle(tab);
         }
       }
     }

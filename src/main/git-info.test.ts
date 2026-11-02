@@ -123,4 +123,20 @@ describe('GitWatcher', () => {
     fs.writeFileSync(path.join(clone, 'a.txt'), 'edited');
     await expect.poll(() => changes.at(-1)?.dirty, { timeout: 8_000 }).toBe(true);
   }, 10_000);
+
+  it('holds edits made while an agent is busy until it settles', async () => {
+    const { clone } = setUpClone();
+    const changes: GitInfo[] = [];
+    let busy = true;
+    watcher = new GitWatcher((_folder, info) => changes.push(info), () => busy);
+    expect(await watcher.get(clone)).toMatchObject({ dirty: false });
+
+    fs.writeFileSync(path.join(clone, 'a.txt'), 'edited');
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+    expect(changes).toEqual([]);
+
+    busy = false;
+    watcher.settle(clone);
+    await expect.poll(() => changes.at(-1)?.dirty, { timeout: 8_000 }).toBe(true);
+  }, 15_000);
 });
