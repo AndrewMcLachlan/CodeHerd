@@ -14,6 +14,12 @@ describe('parseOpenRequest', () => {
     expect(parseOpenRequest(['codeherd.exe', '.'], cwd, 0, anyFolder)).toEqual({ folder: cwd });
   });
 
+  it('resolves against --cwd when the launcher passes one', () => {
+    const elsewhere = path.resolve('/elsewhere');
+    expect(parseOpenRequest(['codeherd.exe', `--cwd=${elsewhere}${path.sep}.`, 'repo'], cwd, 0, anyFolder)).toEqual({ folder: path.join(elsewhere, 'repo') });
+    expect(parseOpenRequest(['codeherd.exe', '--cwd', elsewhere, '.'], cwd, 0, anyFolder)).toEqual({ folder: elsewhere });
+  });
+
   it('reads the agent in either flag form', () => {
     expect(parseOpenRequest(['codeherd.exe', '--agent', 'codex', 'repo'], cwd, 0, anyFolder)).toEqual({ folder: path.join(cwd, 'repo'), agent: 'codex' });
     expect(parseOpenRequest(['codeherd.exe', 'repo', '--agent=Claude'], cwd, 0, anyFolder)).toEqual({ folder: path.join(cwd, 'repo'), agent: 'claude' });
