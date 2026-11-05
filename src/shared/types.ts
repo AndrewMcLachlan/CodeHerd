@@ -30,6 +30,12 @@ export interface TabState {
   effort?: string;
 }
 
+/** A folder to open in a new tab, passed on the command line. */
+export interface FolderOpenRequest {
+  folder: FolderPath;
+  agent?: AgentType;
+}
+
 export interface RecentlyClosedTab {
   agent: AgentType;
   folder: FolderPath;

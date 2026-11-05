@@ -25,6 +25,7 @@ export const IPC = {
   UPDATE_DISMISS: 'update:dismiss',
   UPDATE_GET_SYNC: 'update:get-sync',
   UPDATE_OPEN: 'update:open',
+  OPEN_REQUESTS_TAKE: 'open-requests:take',
 
   // Main -> Renderer (send pattern)
   PTY_DATA: 'pty:data',
@@ -37,6 +38,7 @@ export const IPC = {
   THEME_CHANGED: 'theme:changed',
   MENU_RESTORE_RECENT: 'menu:restore-recent',
   UPDATE_AVAILABLE: 'update:available',
+  OPEN_REQUESTS_PENDING: 'open-requests:pending',
 
   // Recording began after startup, via a --diagnostics relaunch at a running app
   DIAGNOSTICS_STARTED: 'diagnostics:started',

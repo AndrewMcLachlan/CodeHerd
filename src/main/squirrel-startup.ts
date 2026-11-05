@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
+import { installCommandLine, type CommandLineInstaller } from './command-line-install';
 
 export type SquirrelSpawn = (file: string, args: string[]) => void;
 
@@ -19,28 +20,34 @@ const defaultSpawn: SquirrelSpawn = (file, args) => {
  *
  * Shortcuts go to the Start Menu ONLY — never the desktop. Users who want a
  * desktop icon can create one from the Start Menu entry themselves.
+ *
+ * Install and update also put a `codeherd` command on the user's PATH; uninstall takes it off.
  */
 export function handleSquirrelEvent(
   argv: readonly string[] = process.argv,
   platform: NodeJS.Platform = process.platform,
   execPath: string = process.execPath,
   spawnFn: SquirrelSpawn = defaultSpawn,
+  commandLine: CommandLineInstaller = installCommandLine,
 ): boolean {
   if (platform !== 'win32' || argv.length <= 1) return false;
 
   // Installed layout: %LocalAppData%\codeherd\Update.exe above app-<version>\codeherd.exe.
   // Explicit win32 path semantics: these are always Windows paths, and the generic
   // `path` would misparse the backslashes when the tests run on macOS/Linux.
-  const updateExe = path.win32.resolve(path.win32.dirname(execPath), '..', 'Update.exe');
+  const rootDir = path.win32.resolve(path.win32.dirname(execPath), '..');
+  const updateExe = path.win32.join(rootDir, 'Update.exe');
   const exeName = path.win32.basename(execPath);
 
   switch (argv[1]) {
     case '--squirrel-install':
     case '--squirrel-updated':
       spawnFn(updateExe, [`--createShortcut=${exeName}`, '--shortcut-locations=StartMenu']);
+      commandLine(rootDir, 'add');
       return true;
     case '--squirrel-uninstall':
       spawnFn(updateExe, [`--removeShortcut=${exeName}`, '--shortcut-locations=StartMenu']);
+      commandLine(rootDir, 'remove');
       return true;
     case '--squirrel-obsolete':
       // An older version being cleaned up after an update — just exit.

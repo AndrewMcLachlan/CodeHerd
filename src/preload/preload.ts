@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import type { AgentAvailability, AgentSession, SessionListing, AgentType, TabCreateRequest, PtyDataMessage, AppState, TabState, GitInfo, RecentlyClosedTab, Preferences, TabColorPickerMessage, TabMetadataMessage, TabSessionMessage, UpdateInfo } from '../shared/types';
+import type { AgentAvailability, AgentSession, SessionListing, AgentType, TabCreateRequest, PtyDataMessage, AppState, TabState, GitInfo, RecentlyClosedTab, Preferences, TabColorPickerMessage, TabMetadataMessage, TabSessionMessage, UpdateInfo, FolderOpenRequest } from '../shared/types';
 
 contextBridge.exposeInMainWorld('codeherd', {
   // Invoke (request/response)
@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('codeherd', {
     ipcRenderer.invoke(IPC.SHELL_OPEN_EXTERNAL, url),
   dismissUpdate: (version: string): Promise<void> =>
     ipcRenderer.invoke(IPC.UPDATE_DISMISS, version),
+  takeOpenRequests: (): Promise<FolderOpenRequest[]> =>
+    ipcRenderer.invoke(IPC.OPEN_REQUESTS_TAKE),
 
   // Event listeners (main -> renderer)
   onPtyData: (callback: (msg: PtyDataMessage) => void): (() => void) => {
@@ -88,6 +90,11 @@ contextBridge.exposeInMainWorld('codeherd', {
     const listener = (_event: Electron.IpcRendererEvent, msg: { folder: string; info: GitInfo }) => callback(msg);
     ipcRenderer.on(IPC.GIT_INFO_CHANGED, listener);
     return () => { ipcRenderer.removeListener(IPC.GIT_INFO_CHANGED, listener); };
+  },
+  onOpenRequestsPending: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on(IPC.OPEN_REQUESTS_PENDING, listener);
+    return () => { ipcRenderer.removeListener(IPC.OPEN_REQUESTS_PENDING, listener); };
   },
   onUpdateAvailable: (callback: (info: UpdateInfo) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, info: UpdateInfo) => callback(info);

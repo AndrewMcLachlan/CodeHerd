@@ -1,21 +1,34 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleSquirrelEvent, type SquirrelSpawn } from './squirrel-startup';
+import type { CommandLineInstaller } from './command-line-install';
 
-const EXE = 'C:\\Users\\u\\AppData\\Local\\codeherd\\app-1.0.0\\codeherd.exe';
-const UPDATE = 'C:\\Users\\u\\AppData\\Local\\codeherd\\Update.exe';
+const ROOT = 'C:\\Users\\u\\AppData\\Local\\codeherd';
+const EXE = `${ROOT}\\app-1.0.0\\codeherd.exe`;
+const UPDATE = `${ROOT}\\Update.exe`;
 
 const run = (argv: string[], platform: NodeJS.Platform = 'win32') => {
   const spawnFn = vi.fn<SquirrelSpawn>();
-  const handled = handleSquirrelEvent(['exe', ...argv], platform, EXE, spawnFn);
-  return { handled, spawnFn };
+  const commandLine = vi.fn<CommandLineInstaller>();
+  const handled = handleSquirrelEvent(['exe', ...argv], platform, EXE, spawnFn, commandLine);
+  return { handled, spawnFn, commandLine };
 };
 
 describe('handleSquirrelEvent', () => {
   it('ignores normal launches', () => {
     const spawnFn = vi.fn<SquirrelSpawn>();
-    expect(handleSquirrelEvent(['exe'], 'win32', EXE, spawnFn)).toBe(false);
+    const commandLine = vi.fn<CommandLineInstaller>();
+    expect(handleSquirrelEvent(['exe'], 'win32', EXE, spawnFn, commandLine)).toBe(false);
     expect(run(['--live-state']).handled).toBe(false);
     expect(spawnFn).not.toHaveBeenCalled();
+    expect(commandLine).not.toHaveBeenCalled();
+  });
+
+  it.each(['--squirrel-install', '--squirrel-updated'])('puts the command on the PATH on %s', (flag) => {
+    expect(run([flag]).commandLine).toHaveBeenCalledWith(ROOT, 'add');
+  });
+
+  it('takes the command off the PATH on uninstall', () => {
+    expect(run(['--squirrel-uninstall']).commandLine).toHaveBeenCalledWith(ROOT, 'remove');
   });
 
   it('ignores squirrel flags off Windows', () => {
