@@ -1,4 +1,4 @@
-import type { AgentAvailability, AgentSession, SessionListing, AgentType, PtyDataMessage, TabState, AppState, GitInfo, Preferences, NewTabShortcut, RecentlyClosedTab, TabColorPickerMessage, TabMetadataMessage, TabSessionMessage, UpdateInfo } from '../shared/types';
+import type { AgentAvailability, AgentSession, SessionListing, AgentType, PtyDataMessage, TabState, AppState, GitInfo, Preferences, NewTabShortcut, RecentlyClosedTab, TabColorPickerMessage, TabMetadataMessage, TabSessionMessage, UpdateInfo, FolderOpenRequest } from '../shared/types';
 import { DEFAULT_NEW_TAB_SHORTCUT, formatShortcut, matchesShortcut } from '../shared/shortcut';
 import { DEFAULT_TERMINAL_FONT_SIZE_POINTS, TerminalManager } from './terminal-manager';
 import { TabManager } from './tab-manager';
@@ -42,6 +42,8 @@ declare global {
       menuAction: (action: string) => Promise<void>;
       openExternal: (url: string) => Promise<void>;
       dismissUpdate: (version: string) => Promise<void>;
+      takeOpenRequests: () => Promise<FolderOpenRequest[]>;
+      onOpenRequestsPending: (cb: () => void) => () => void;
       onUpdateAvailable: (cb: (info: UpdateInfo) => void) => () => void;
       onDiagnosticsStarted: (cb: (msg: { logPath: string }) => void) => () => void;
       onPtyData: (cb: (msg: PtyDataMessage) => void) => () => void;
@@ -583,6 +585,15 @@ async function init(): Promise<void> {
       }
     }
   }
+
+  // Folders from the command line join the restored tabs, at launch or sent on by a later `codeherd <folder>`.
+  const openRequested = async () => {
+    for (const request of await window.codeherd.takeOpenRequests()) {
+      await tabManager.openFolder(request.folder, request.agent);
+    }
+  };
+  window.codeherd.onOpenRequestsPending(() => void openRequested());
+  await openRequested();
 }
 
 document.addEventListener('DOMContentLoaded', init);

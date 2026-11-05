@@ -1,5 +1,5 @@
-import { app, BrowserWindow, Menu, dialog, nativeTheme } from 'electron';
-import type { RecentlyClosedTab, TabState } from '../shared/types';
+import { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme } from 'electron';
+import type { FolderOpenRequest, RecentlyClosedTab, TabState } from '../shared/types';
 import * as path from 'path';
 import { PtyManager } from './pty-manager';
 import { StateManager } from './state-manager';
@@ -21,6 +21,7 @@ import {
 import { IPC } from '../shared/ipc-channels';
 import { STATE_DIR } from '../shared/constants';
 import { handleSquirrelEvent } from './squirrel-startup';
+import { parseOpenRequest } from './open-request';
 import type { ThemePreference, ResolvedTheme } from '../shared/types';
 
 // The Squirrel installer relaunches the exe with --squirrel-* flags during
@@ -47,6 +48,11 @@ let announceDiagnostics: () => void = () => {};
 // Set once the IPC layer is registered. Defaults to an empty list so the close
 // handler can never block a quit on state that doesn't exist yet.
 let getTabs: () => TabState[] = () => [];
+// Folders asked for on a command line, held until the renderer has restored its tabs and takes them.
+const pendingOpens: FolderOpenRequest[] = [];
+const appPathArgs = app.isPackaged ? 0 : 1;
+const launchOpen = parseOpenRequest(process.argv, process.cwd(), appPathArgs);
+if (launchOpen) pendingOpens.push(launchOpen);
 const ptyManager = new PtyManager();
 const stateManager = new StateManager(useLiveState ? STATE_DIR : `${STATE_DIR}-dev`);
 
@@ -71,7 +77,13 @@ if (!gotTheLock) {
   app.quit();
 }
 
-app.on('second-instance', (_event, argv) => {
+app.on('second-instance', (_event, argv, workingDirectory) => {
+  const open = parseOpenRequest(argv, workingDirectory, appPathArgs);
+  if (open) {
+    pendingOpens.push(open);
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC.OPEN_REQUESTS_PENDING);
+  }
+
   // A shortcut carrying --diagnostics cannot start a second copy: the lock above
   // sends it here and the new process dies. Honour the flag in the instance that is
   // actually running, otherwise clicking that shortcut silently does nothing (and
@@ -270,6 +282,7 @@ app.whenReady().then(() => {
 
   const ipc = registerIpcHandlers(ptyManager, stateManager, () => mainWindow, () => isQuitting, rebuildMenu);
   getTabs = ipc.getTabs;
+  ipcMain.handle(IPC.OPEN_REQUESTS_TAKE, () => pendingOpens.splice(0));
   rebuildMenu();
   createWindow();
 

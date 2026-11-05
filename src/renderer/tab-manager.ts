@@ -577,6 +577,15 @@ export class TabManager {
 
     const folder = await window.codeherd.pickFolder();
     if (!folder) return;
+    await this.openFolder(folder, agent);
+  }
+
+  /** Open a tab in `folder`, offering its earlier sessions to resume when it has any. */
+  async openFolder(folder: string, requestedAgent?: AgentType): Promise<void> {
+    const agent = requestedAgent && this.availableAgents[requestedAgent]
+      ? requestedAgent
+      : resolveDefaultAgent(this.availableAgents, this.defaultAgent);
+    if (!agent) return;
 
     const { sessions } = await window.codeherd.listSessions(folder, agent);
     if (sessions.length === 0) {
