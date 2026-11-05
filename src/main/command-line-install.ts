@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -13,23 +13,23 @@ export type CommandLineInstaller = (rootDir: string, change: PathChange) => void
  */
 export const launcherScript = '@echo off\r\nstart "" "%~dp0..\\codeherd.exe" --cwd="%CD%\\." %*\r\n';
 
-/** PowerShell that adds or removes `dir` in the user PATH, keeping other entries unexpanded, then tells Explorer. */
-export function userPathScript(dir: string, change: PathChange): string {
-  const quoted = `'${dir.replace(/'/g, "''")}'`;
-  return [
-    `$dir = ${quoted}`,
-    `$key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)`,
-    `$entries = @(([string]$key.GetValue('Path', '', 'DoNotExpandEnvironmentNames')) -split ';' | Where-Object { $_ })`,
-    `$others = @($entries | Where-Object { $_.TrimEnd('\\') -ne $dir.TrimEnd('\\') })`,
-    change === 'add'
-      ? `if ($others.Count -ne $entries.Count) { exit 0 }; $others += $dir`
-      : `if ($others.Count -eq $entries.Count) { exit 0 }`,
-    `$key.SetValue('Path', ($others -join ';'), 'ExpandString')`,
-    // Setting any user variable through .NET broadcasts WM_SETTINGCHANGE, so new terminals see the PATH.
-    `[Environment]::SetEnvironmentVariable('CodeHerdPathRefresh', '1', 'User')`,
-    `[Environment]::SetEnvironmentVariable('CodeHerdPathRefresh', $null, 'User')`,
-  ].join('\n');
+const sameEntry = (a: string, b: string) => a.replace(/\\+$/, '').toLowerCase() === b.replace(/\\+$/, '').toLowerCase();
+
+/** `current` with `dir` added or removed, or null when it already says what was asked. */
+export function changePath(current: string, dir: string, change: PathChange): string | null {
+  const entries = current.split(';').filter(entry => entry.trim());
+  const others = entries.filter(entry => !sameEntry(entry, dir));
+  if (change === 'add') return others.length === entries.length ? [...entries, dir].join(';') : null;
+  return others.length === entries.length ? null : others.join(';');
 }
+
+/** The user PATH as `reg query` prints it, unexpanded. Empty when the value doesn't exist. */
+export function parseRegQuery(output: string): { value: string; type: string } {
+  const match = /^\s*Path\s+(REG_\w+)(?:[ \t]+(.*?))?\s*$/im.exec(output);
+  return match ? { value: match[2] ?? '', type: match[1] } : { value: '', type: 'REG_EXPAND_SZ' };
+}
+
+const environmentKey = 'HKCU\\Environment';
 
 export const installCommandLine: CommandLineInstaller = (rootDir, change) => {
   const binDir = path.win32.join(rootDir, 'bin');
@@ -38,8 +38,24 @@ export const installCommandLine: CommandLineInstaller = (rootDir, change) => {
       fs.mkdirSync(binDir, { recursive: true });
       fs.writeFileSync(path.win32.join(binDir, 'codeherd.cmd'), launcherScript);
     }
-    spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', userPathScript(binDir, change)], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
-  } catch {
+    let query = '';
+    try {
+      query = execFileSync('reg.exe', ['query', environmentKey, '/v', 'Path'], { encoding: 'utf8', windowsHide: true });
+    } catch {
+      // No user PATH yet: reg exits non-zero and there is nothing to keep.
+    }
+    const current = parseRegQuery(query);
+    const next = changePath(current.value, binDir, change);
+    if (next === null) return;
+    const type = current.type === 'REG_SZ' && !next.includes('%') ? 'REG_SZ' : 'REG_EXPAND_SZ';
+    execFileSync('reg.exe', ['add', environmentKey, '/v', 'Path', '/t', type, '/d', next, '/f'], { windowsHide: true, stdio: 'ignore' });
+  } catch (err) {
     // A PATH entry is a convenience; failing to add one must never fail the install.
+    try {
+      fs.mkdirSync(binDir, { recursive: true });
+      fs.appendFileSync(path.win32.join(binDir, 'install.log'), `${new Date().toISOString()} ${change} failed: ${String(err)}\r\n`);
+    } catch {
+      // Nowhere to report it.
+    }
   }
 };
