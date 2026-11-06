@@ -38,16 +38,17 @@ export function handleSquirrelEvent(
   const rootDir = path.win32.resolve(path.win32.dirname(execPath), '..');
   const updateExe = path.win32.join(rootDir, 'Update.exe');
   const exeName = path.win32.basename(execPath);
+  const version = path.win32.basename(path.win32.dirname(execPath)).replace(/^app-/, '');
 
   switch (argv[1]) {
     case '--squirrel-install':
     case '--squirrel-updated':
       spawnFn(updateExe, [`--createShortcut=${exeName}`, '--shortcut-locations=StartMenu']);
-      commandLine(rootDir, 'add');
+      commandLine(rootDir, 'add', version);
       return true;
     case '--squirrel-uninstall':
       spawnFn(updateExe, [`--removeShortcut=${exeName}`, '--shortcut-locations=StartMenu']);
-      commandLine(rootDir, 'remove');
+      commandLine(rootDir, 'remove', version);
       return true;
     case '--squirrel-obsolete':
       // An older version being cleaned up after an update — just exit.

@@ -5,13 +5,23 @@ import * as path from 'path';
 export type PathChange = 'add' | 'remove';
 
 /** Puts `codeherd` on the user's PATH (or takes it off), given the Squirrel install root. */
-export type CommandLineInstaller = (rootDir: string, change: PathChange) => void;
+export type CommandLineInstaller = (rootDir: string, change: PathChange, version: string) => void;
 
 /**
  * `bin\codeherd.cmd`: starts the Squirrel stub, which always runs the newest installed version.
  * `start` stops cmd waiting on a GUI app. `%CD%\.` keeps a drive root's trailing backslash from escaping the quote.
+ * The script answers `--version` itself because output from the GUI app can't reach the caller's console.
  */
-export const launcherScript = '@echo off\r\nstart "" "%~dp0..\\codeherd.exe" --cwd="%CD%\\." %*\r\n';
+export const launcherScript = (version: string) => [
+  '@echo off',
+  'if /i "%~1"=="--version" goto version',
+  'if /i "%~1"=="-v" goto version',
+  'start "" "%~dp0..\\codeherd.exe" --cwd="%CD%\\." %*',
+  'exit /b',
+  ':version',
+  `echo ${version}`,
+  '',
+].join('\r\n');
 
 const sameEntry = (a: string, b: string) => a.replace(/\\+$/, '').toLowerCase() === b.replace(/\\+$/, '').toLowerCase();
 
@@ -31,12 +41,12 @@ export function parseRegQuery(output: string): { value: string; type: string } {
 
 const environmentKey = 'HKCU\\Environment';
 
-export const installCommandLine: CommandLineInstaller = (rootDir, change) => {
+export const installCommandLine: CommandLineInstaller = (rootDir, change, version) => {
   const binDir = path.win32.join(rootDir, 'bin');
   try {
     if (change === 'add') {
       fs.mkdirSync(binDir, { recursive: true });
-      fs.writeFileSync(path.win32.join(binDir, 'codeherd.cmd'), launcherScript);
+      fs.writeFileSync(path.win32.join(binDir, 'codeherd.cmd'), launcherScript(version));
     }
     let query = '';
     try {
