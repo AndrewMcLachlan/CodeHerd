@@ -21,13 +21,19 @@ import {
 import { IPC } from '../shared/ipc-channels';
 import { STATE_DIR } from '../shared/constants';
 import { handleSquirrelEvent } from './squirrel-startup';
-import { parseOpenRequest } from './open-request';
+import { isVersionRequest, parseOpenRequest } from './open-request';
 import type { ThemePreference, ResolvedTheme } from '../shared/types';
 
 // The Squirrel installer relaunches the exe with --squirrel-* flags during
 // install/update/uninstall; do the shortcut work and exit before any window.
 if (handleSquirrelEvent()) {
   app.quit();
+}
+
+const appPathArgs = app.isPackaged ? 0 : 1;
+if (isVersionRequest(process.argv, appPathArgs)) {
+  console.log(app.getVersion());
+  process.exit(0);
 }
 
 // In dev mode, use a separate user data directory so we can run alongside the installed app
@@ -50,7 +56,6 @@ let announceDiagnostics: () => void = () => {};
 let getTabs: () => TabState[] = () => [];
 // Folders asked for on a command line, held until the renderer has restored its tabs and takes them.
 const pendingOpens: FolderOpenRequest[] = [];
-const appPathArgs = app.isPackaged ? 0 : 1;
 const launchOpen = parseOpenRequest(process.argv, process.cwd(), appPathArgs);
 if (launchOpen) pendingOpens.push(launchOpen);
 const ptyManager = new PtyManager();

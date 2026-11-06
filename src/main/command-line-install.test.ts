@@ -5,7 +5,15 @@ const bin = 'C:\\Users\\u\\AppData\\Local\\codeherd\\bin';
 
 describe('launcherScript', () => {
   it('starts the Squirrel stub with the caller\'s directory and arguments', () => {
-    expect(launcherScript).toContain('start "" "%~dp0..\\codeherd.exe" --cwd="%CD%\\." %*');
+    expect(launcherScript('1.2.3')).toContain('start "" "%~dp0..\\codeherd.exe" --cwd="%CD%\\." %*');
+  });
+
+  it('answers --version and -v with the installed version before starting the app', () => {
+    const script = launcherScript('1.2.3-rc1');
+    expect(script).toContain('if /i "%~1"=="--version" goto version');
+    expect(script).toContain('if /i "%~1"=="-v" goto version');
+    expect(script).toContain(':version\r\necho 1.2.3-rc1\r\n');
+    expect(script.indexOf('goto version')).toBeLessThan(script.indexOf('start ""'));
   });
 });
 

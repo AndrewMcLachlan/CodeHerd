@@ -1,10 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import * as path from 'path';
-import { parseOpenRequest } from './open-request';
+import { isVersionRequest, parseOpenRequest } from './open-request';
 
 const cwd = path.resolve('/work');
 const anyFolder = () => true;
 const sessionId = '0f8fad5b-d9cb-469f-a165-70867728950e';
+
+describe('isVersionRequest', () => {
+  it('recognises either flag as the first argument', () => {
+    expect(isVersionRequest(['codeherd', '--version'])).toBe(true);
+    expect(isVersionRequest(['codeherd', '-v'])).toBe(true);
+    expect(isVersionRequest(['electron.exe', '.', '--version'], 1)).toBe(true);
+  });
+
+  it('ignores anything else', () => {
+    expect(isVersionRequest(['codeherd'])).toBe(false);
+    expect(isVersionRequest(['codeherd', 'repo', '--version'])).toBe(false);
+    expect(isVersionRequest(['electron.exe', '--version', '.'], 1)).toBe(false);
+  });
+});
 
 describe('parseOpenRequest', () => {
   it('resolves a relative folder against the working directory', () => {

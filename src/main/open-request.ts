@@ -47,6 +47,12 @@ export function parseOpenRequest(argv: readonly string[], cwd: string, skip = 0,
   return { folder, ...(agent && { agent }), ...(resumeSessionId && { resumeSessionId }) };
 }
 
+/** Whether the command line's first argument after any `skip`ped positionals asks for the version. */
+export function isVersionRequest(argv: readonly string[], skip = 0): boolean {
+  const first = argv[1 + skip]?.toLowerCase();
+  return first === '--version' || first === '-v';
+}
+
 function defaultIsDirectory(folder: string): boolean {
   try {
     return fs.statSync(folder).isDirectory();

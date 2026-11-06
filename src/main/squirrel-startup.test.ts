@@ -24,11 +24,11 @@ describe('handleSquirrelEvent', () => {
   });
 
   it.each(['--squirrel-install', '--squirrel-updated'])('puts the command on the PATH on %s', (flag) => {
-    expect(run([flag]).commandLine).toHaveBeenCalledWith(ROOT, 'add');
+    expect(run([flag]).commandLine).toHaveBeenCalledWith(ROOT, 'add', '1.0.0');
   });
 
   it('takes the command off the PATH on uninstall', () => {
-    expect(run(['--squirrel-uninstall']).commandLine).toHaveBeenCalledWith(ROOT, 'remove');
+    expect(run(['--squirrel-uninstall']).commandLine).toHaveBeenCalledWith(ROOT, 'remove', '1.0.0');
   });
 
   it('ignores squirrel flags off Windows', () => {
