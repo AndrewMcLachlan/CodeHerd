@@ -1,6 +1,6 @@
 {
   "name": "codeherd",
-  "version": "1.0.0-beta13",
+  "version": "1.0.0-rc1",
   "description": "Manage Claude Code and Codex CLI sessions in persistent tabs",
   "author": "Andrew McLachlan",
   "license": "MIT",
@@ -21,8 +21,8 @@
     "dev:styling": "npm run build && electron . --styling",
     "dev:live": "npm run build && electron . --live-state",
     "rebuild": "electron-rebuild",
-    "package": "electron-forge package",
-    "make": "electron-forge make"
+    "package": "npm run build && electron-forge package",
+    "make": "npm run build && electron-forge make"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

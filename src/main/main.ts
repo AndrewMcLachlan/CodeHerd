@@ -69,7 +69,7 @@ function getThemeColors(resolved: ResolvedTheme) {
 }
 
 // Enforce single instance (skip in dev to allow running alongside installed app)
-const gotTheLock = app.isPackaged ? app.requestSingleInstanceLock() : true;
+const gotTheLock = app.isPackaged ? app.requestSingleInstanceLock({ argv: process.argv }) : true;
 if (!gotTheLock) {
   // quit() is not immediate: without this guard the losing process still reached
   // whenReady, armed the diagnostics recorder, and wrote a "started" line into the
@@ -77,8 +77,9 @@ if (!gotTheLock) {
   app.quit();
 }
 
-app.on('second-instance', (_event, argv, workingDirectory) => {
-  const open = parseOpenRequest(argv, workingDirectory, appPathArgs);
+app.on('second-instance', (_event, argv, workingDirectory, additionalData) => {
+  // Must read the original order: Chromium moves switches ahead of arguments in `argv`, separating flags from their values.
+  const open = parseOpenRequest((additionalData as { argv: string[] }).argv, workingDirectory, appPathArgs);
   if (open) {
     pendingOpens.push(open);
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC.OPEN_REQUESTS_PENDING);

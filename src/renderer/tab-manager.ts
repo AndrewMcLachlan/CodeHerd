@@ -580,12 +580,19 @@ export class TabManager {
     await this.openFolder(folder, agent);
   }
 
-  /** Open a tab in `folder`, offering its earlier sessions to resume when it has any. */
-  async openFolder(folder: string, requestedAgent?: AgentType): Promise<void> {
+  /** Open a tab in `folder`, resuming `resumeSessionId` or else offering its earlier sessions when it has any. */
+  async openFolder(folder: string, requestedAgent?: AgentType, resumeSessionId?: string): Promise<void> {
     const agent = requestedAgent && this.availableAgents[requestedAgent]
       ? requestedAgent
       : resolveDefaultAgent(this.availableAgents, this.defaultAgent);
     if (!agent) return;
+
+    if (resumeSessionId) {
+      const open = Array.from(this.tabs.values()).find(tab => tab.sessionId === resumeSessionId);
+      if (open) this.switchTo(open.id);
+      else await this.createTab(folder, agent, resumeSessionId);
+      return;
+    }
 
     const { sessions } = await window.codeherd.listSessions(folder, agent);
     if (sessions.length === 0) {

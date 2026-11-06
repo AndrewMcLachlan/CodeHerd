@@ -589,7 +589,7 @@ async function init(): Promise<void> {
   // Folders from the command line join the restored tabs, at launch or sent on by a later `codeherd <folder>`.
   const openRequested = async () => {
     for (const request of await window.codeherd.takeOpenRequests()) {
-      await tabManager.openFolder(request.folder, request.agent);
+      await tabManager.openFolder(request.folder, request.agent, request.resumeSessionId);
     }
   };
   window.codeherd.onOpenRequestsPending(() => void openRequested());
