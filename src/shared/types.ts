@@ -34,6 +34,7 @@ export interface TabState {
 export interface FolderOpenRequest {
   folder: FolderPath;
   agent?: AgentType;
+  resumeSessionId?: SessionId;
 }
 
 export interface RecentlyClosedTab {

@@ -4,6 +4,7 @@ import { parseOpenRequest } from './open-request';
 
 const cwd = path.resolve('/work');
 const anyFolder = () => true;
+const sessionId = '0f8fad5b-d9cb-469f-a165-70867728950e';
 
 describe('parseOpenRequest', () => {
   it('resolves a relative folder against the working directory', () => {
@@ -27,6 +28,32 @@ describe('parseOpenRequest', () => {
 
   it('ignores an unknown agent', () => {
     expect(parseOpenRequest(['codeherd.exe', 'repo', '--agent', 'gpt'], cwd, 0, anyFolder)).toEqual({ folder: path.join(cwd, 'repo') });
+  });
+
+  it('reads a session to resume in any flag form and position', () => {
+    const expected = { folder: path.join(cwd, 'repo'), resumeSessionId: sessionId };
+    expect(parseOpenRequest(['codeherd.exe', 'repo', '--resume', sessionId], cwd, 0, anyFolder)).toEqual(expected);
+    expect(parseOpenRequest(['codeherd.exe', '--resume', sessionId, 'repo'], cwd, 0, anyFolder)).toEqual(expected);
+    expect(parseOpenRequest(['codeherd.exe', `--resume=${sessionId}`, 'repo'], cwd, 0, anyFolder)).toEqual(expected);
+    expect(parseOpenRequest(['codeherd.exe', '-r', sessionId, 'repo'], cwd, 0, anyFolder)).toEqual(expected);
+  });
+
+  it('keeps the agent alongside a resumed session', () => {
+    expect(parseOpenRequest(['codeherd.exe', 'repo', '--agent', 'codex', '--resume', sessionId], cwd, 0, anyFolder)).toEqual({ folder: path.join(cwd, 'repo'), agent: 'codex', resumeSessionId: sessionId });
+  });
+
+  it('resumes in the working directory when no folder is given', () => {
+    expect(parseOpenRequest(['codeherd.exe', '--resume', sessionId], cwd, 0, anyFolder)).toEqual({ folder: cwd, resumeSessionId: sessionId });
+    expect(parseOpenRequest(['electron.exe', '.', '--resume', sessionId], cwd, 1, anyFolder)).toEqual({ folder: cwd, resumeSessionId: sessionId });
+  });
+
+  it('treats --resume without an id as a request for the folder', () => {
+    expect(parseOpenRequest(['codeherd.exe', '--resume'], cwd, 0, anyFolder)).toEqual({ folder: cwd });
+    expect(parseOpenRequest(['codeherd.exe', '--resume', 'repo'], cwd, 0, anyFolder)).toEqual({ folder: path.join(cwd, 'repo') });
+  });
+
+  it('ignores a resume value that is not a session id', () => {
+    expect(parseOpenRequest(['codeherd.exe', 'repo', '--resume=latest'], cwd, 0, anyFolder)).toEqual({ folder: path.join(cwd, 'repo') });
   });
 
   it('ignores Chromium and app flags', () => {
