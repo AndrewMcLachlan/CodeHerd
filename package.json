@@ -42,11 +42,11 @@
     "@electron-forge/maker-zip": "^8.0.1",
     "@electron/rebuild": "^4.2.1",
     "@types/node": "^26.6.6",
-    "electron": "^43.8.5",
+    "electron": "^43.8.7",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "overrides": {
     "node-abi@<3.92.0": "3.92.0"
