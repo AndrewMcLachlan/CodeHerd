@@ -1,22 +1,25 @@
+/** Claude Code's `/color` palette, so a tab matches the colour its session shows. */
 export const TAB_COLOR_OPTIONS = [
-  { name: 'red', label: 'Red', value: '#f38ba8' },
-  { name: 'orange', label: 'Orange', value: '#fab387' },
-  { name: 'yellow', label: 'Yellow', value: '#f9e2af' },
-  { name: 'green', label: 'Green', value: '#a6e3a1' },
-  { name: 'cyan', label: 'Cyan', value: '#94e2d5' },
-  { name: 'blue', label: 'Blue', value: '#89b4fa' },
-  { name: 'purple', label: 'Purple', value: '#cba6f7' },
-  { name: 'pink', label: 'Pink', value: '#f5c2e7' },
+  { name: 'red', label: 'Red', value: '#dc2626' },
+  { name: 'orange', label: 'Orange', value: '#d97757' },
+  { name: 'yellow', label: 'Yellow', value: '#ca8a04' },
+  { name: 'green', label: 'Green', value: '#16a34a' },
+  { name: 'cyan', label: 'Cyan', value: '#0891b2' },
+  { name: 'blue', label: 'Blue', value: '#6a9bcc' },
+  { name: 'purple', label: 'Purple', value: '#827dbd' },
+  { name: 'pink', label: 'Pink', value: '#c46686' },
 ] as const;
 
+const optionValues: Record<string, string> = Object.fromEntries(TAB_COLOR_OPTIONS.map(option => [option.name, option.value]));
+
 const NAMED_COLOR_MAP: Record<string, string> = {
-  ...Object.fromEntries(TAB_COLOR_OPTIONS.map(option => [option.name, option.value])),
-  teal: '#94e2d5',
+  ...optionValues,
+  teal: optionValues.cyan,
   sapphire: '#74c7ec',
   sky: '#89dceb',
   lavender: '#b4befe',
-  magenta: '#f5c2e7',
-  mauve: '#cba6f7',
+  magenta: optionValues.pink,
+  mauve: optionValues.purple,
   white: '#cdd6f4',
   gray: '#6c7086',
   grey: '#6c7086',
