@@ -98,6 +98,7 @@ jobs:
           need "CodeHerd-darwin-.*\.dmg"
           need "CodeHerd-linux-x64-.*\.zip"
           need "codeherd_.*_amd64\.deb"
+          need "codeherd-.*\.x86_64\.rpm"
           need "SHA256SUMS"
           echo "All expected assets present."
 

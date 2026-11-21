@@ -1,6 +1,6 @@
 {
   "name": "codeherd",
-  "version": "1.0.0-rc3",
+  "version": "1.0.0-rc4",
   "description": "Manage Claude Code and Codex CLI sessions in persistent tabs",
   "author": "Andrew McLachlan",
   "license": "MIT",
@@ -38,6 +38,7 @@
     "@electron-forge/cli": "^8.0.1",
     "@electron-forge/maker-deb": "^8.0.1",
     "@electron-forge/maker-dmg": "^8.0.1",
+    "@electron-forge/maker-rpm": "^8.0.1",
     "@electron-forge/maker-squirrel": "^8.0.1",
     "@electron-forge/maker-zip": "^8.0.1",
     "@electron/rebuild": "^4.2.1",

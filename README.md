@@ -27,7 +27,7 @@ upgrade/downgrade/uninstall steps for each platform.
 |---|---|---|
 | Windows 10/11 | x64 | Supported |
 | macOS 14+ | Apple Silicon (arm64) | Supported |
-| Linux (Ubuntu 24.04+ or equivalent) | x64 | Supported |
+| Linux with glibc 2.28+ (Ubuntu 20.04+, Debian 10+, Fedora, RHEL/Alma/Rocky 8+, openSUSE Leap 15.3+) | x64 | Supported |
 
 Other platforms and architectures (Windows arm64, Intel macOS, other distros)
 may work from source but are not built or tested.

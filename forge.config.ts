@@ -39,6 +39,13 @@ try {
   }));
 } catch {}
 
+// packagerConfig.icon only brands Windows and macOS. Without this the deb/rpm
+// makers fall back to their bundled generic Electron icon, so the launcher and
+// app menu show the wrong icon even though the window icon is right. A sized
+// map installs into /usr/share/icons/hicolor, where desktops resolve the
+// .desktop entry's Icon=codeherd.
+const linuxIcon = { '256x256': path.resolve(__dirname, 'assets', 'icon.png') };
+
 try {
   const { MakerDeb } = require('@electron-forge/maker-deb');
   makers.push(new MakerDeb({
@@ -47,6 +54,35 @@ try {
       productName: 'CodeHerd',
       maintainer: 'Andrew McLachlan',
       homepage: 'https://github.com/AndrewMcLachlan/CodeHerd',
+      icon: linuxIcon,
+    },
+  }));
+} catch {}
+
+// Fedora, RHEL and its rebuilds, and openSUSE. The maker hard-fails `make` when
+// rpmbuild is missing, so only register it where rpmbuild exists: local Linux
+// builds still get deb + zip, and CI installs rpm and the release workflow's
+// expected-artifacts check fails if the .rpm does not appear.
+try {
+  require('child_process').execFileSync('rpmbuild', ['--version'], { stdio: 'ignore' });
+  const { MakerRpm } = require('@electron-forge/maker-rpm');
+  const { version } = require('./package.json');
+  makers.push(new MakerRpm({
+    options: {
+      name: 'codeherd',
+      productName: 'CodeHerd',
+      homepage: 'https://github.com/AndrewMcLachlan/CodeHerd',
+      license: 'MIT',
+      icon: linuxIcon,
+      // RPM forbids '-' in Version and the installer swaps it for '.', but
+      // 1.0.0.rc2 sorts AFTER 1.0.0, so the final release would never upgrade
+      // over a pre-release. '~' is RPM's pre-release marker: 1.0.0~rc2 < 1.0.0.
+      version: version.replace(/-/g, '~'),
+      // Electron links libasound.so.2 but the installer's default requires omit
+      // it, so a minimal RHEL/Rocky 8 install launches with "libasound.so.2:
+      // cannot open shared object file". Merged with the installer's defaults.
+      // Fedora/RHEL call it alsa-lib, openSUSE libasound2.
+      requires: ['(alsa-lib or libasound2)'],
     },
   }));
 } catch {}
