@@ -83,6 +83,9 @@ try {
       // cannot open shared object file". Merged with the installer's defaults.
       // Fedora/RHEL call it alsa-lib, openSUSE libasound2.
       requires: ['(alsa-lib or libasound2)'],
+      // RPM 4.20+ (the ubuntu-latest image) runs %install from a per-build
+      // subdirectory, which breaks the upstream template's relative copy.
+      specTemplate: path.resolve(__dirname, 'assets', 'linux', 'rpm.spec.ejs'),
     },
   }));
 } catch {}
