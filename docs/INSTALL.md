@@ -66,10 +66,12 @@ gh attestation verify CodeHerd-win32-x64-<version>.zip --repo AndrewMcLachlan/Co
 
 1. Open the DMG and drag **CodeHerd** to Applications (or unzip and move it).
 2. **Gatekeeper**: the first launch of an unsigned app is refused with
-   *"CodeHerd can't be opened"*. Either right-click the app → **Open** →
-   **Open**, or go to **System Settings → Privacy & Security** and click
-   **Open Anyway** next to the CodeHerd message. You only need this once per
-   install.
+   *"CodeHerd can't be opened"* (or *"Apple could not verify…"*). Click
+   **Done**, then go to **System Settings → Privacy & Security** and click
+   **Open Anyway** next to the CodeHerd message. (On macOS 14 and earlier,
+   right-click the app → **Open** → **Open** also works.) You only need this
+   once per install. Alternatively, clear the quarantine flag from a terminal:
+   `xattr -dr com.apple.quarantine /Applications/CodeHerd.app`.
 3. **Upgrade**: replace the app in Applications with the new version.
 4. **Uninstall**: delete the app. To remove all data, also delete
    `~/.codeherd` and `~/Library/Application Support/CodeHerd`.

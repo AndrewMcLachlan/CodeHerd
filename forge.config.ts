@@ -84,6 +84,27 @@ const config: ForgeConfig = {
         );
         fs.writeFileSync(plistPath, plist);
       }
+      // Without a signing identity, packager leaves only the executable's
+      // linker signature, so the bundle as a whole is unsealed (and editing
+      // Info.plist above would break any seal anyway). On Apple Silicon,
+      // Gatekeeper reports such a quarantined app as "damaged" with no Open
+      // Anyway option. Re-seal the whole bundle ad-hoc as the last step so the
+      // documented unsigned-app flow works.
+      const appPath = path.join(options.outputPaths[0], 'CodeHerd.app');
+      // node-pty's prebuilt spawn-helper arrives from npm without its execute
+      // bit, so every pty spawn fails with "posix_spawnp failed". Restore it
+      // before sealing, since the mode is part of what the user receives.
+      const prebuilds = path.join(appPath, 'Contents', 'Resources', 'app.asar.unpacked',
+        'node_modules', 'node-pty', 'prebuilds');
+      if (fs.existsSync(prebuilds)) {
+        for (const dir of fs.readdirSync(prebuilds)) {
+          const helper = path.join(prebuilds, dir, 'spawn-helper');
+          if (fs.existsSync(helper)) fs.chmodSync(helper, 0o755);
+        }
+      }
+      const { execFileSync } = await import('child_process');
+      execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' });
+      execFileSync('codesign', ['--verify', '--deep', '--strict', appPath], { stdio: 'inherit' });
     },
   },
   // node-pty ships N-API prebuilds for each supported platform. Rebuilding it
