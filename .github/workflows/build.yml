@@ -55,6 +55,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # node-pty has no Linux prebuild, so npm ci just compiled pty.node against
+      # this runner's glibc. Recompile it in manylinux_2_28 so the app runs on any
+      # distro with glibc >= 2.28, whatever image ubuntu-latest points at today.
+      - name: Rebuild node-pty for old glibc
+        if: matrix.platform == 'linux'
+        run: bash scripts/build-node-pty-linux.sh
+
+      # maker-rpm shells out to rpmbuild, which the Ubuntu image lacks.
+      - name: Install rpm tooling
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
       - name: Type check
         run: npm run typecheck
 
@@ -66,6 +78,10 @@ jobs:
 
       - name: Make distributables
         run: npm run make
+
+      - name: Check Linux glibc floor
+        if: matrix.platform == 'linux'
+        run: bash scripts/check-linux-glibc.sh 2.28 3.4.25 out
 
       - name: Upload artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

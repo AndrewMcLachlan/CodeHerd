@@ -17,6 +17,7 @@ Artifact names are stable and self-describing:
 | Windows x64 (portable) | `CodeHerd-win32-x64-<version>.zip` |
 | macOS Apple Silicon | `CodeHerd-darwin-arm64-<version>.dmg` (or `.zip`) |
 | Linux x64 (Debian/Ubuntu) | `codeherd_<version>_amd64.deb` |
+| Linux x64 (Fedora/RHEL/openSUSE) | `codeherd-<version>-1.x86_64.rpm` |
 | Linux x64 (portable) | `CodeHerd-linux-x64-<version>.zip` |
 
 ## Verifying a download
@@ -87,13 +88,20 @@ Debian/Ubuntu:
 sudo apt install ./codeherd_<version>_amd64.deb   # also upgrades in place
 ```
 
-Portable: extract the ZIP anywhere and run `codeherd`.
+Fedora/RHEL/Alma/Rocky (use `zypper install` on openSUSE):
 
-- **Upgrade**: install the new `.deb` (or replace the extracted folder).
+```sh
+sudo dnf install ./codeherd-<version>-1.x86_64.rpm   # also upgrades in place
+```
+
+Portable (any x64 distro with glibc 2.28 or newer): extract the ZIP anywhere and
+run `codeherd`.
+
+- **Upgrade**: install the new `.deb`/`.rpm` (or replace the extracted folder).
 - **Downgrade**: `sudo apt install ./codeherd_<older-version>_amd64.deb
-  --allow-downgrades`.
-- **Uninstall**: `sudo apt remove codeherd`. To remove all data, also delete
-  `~/.codeherd` and `~/.config/CodeHerd`.
+  --allow-downgrades`, or `sudo dnf downgrade ./codeherd-<older-version>-1.x86_64.rpm`.
+- **Uninstall**: `sudo apt remove codeherd` or `sudo dnf remove codeherd`. To
+  remove all data, also delete `~/.codeherd` and `~/.config/CodeHerd`.
 
 ## Where your data lives
 

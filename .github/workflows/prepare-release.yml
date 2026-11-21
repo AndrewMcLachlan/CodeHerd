@@ -139,6 +139,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # node-pty has no Linux prebuild, so npm ci just compiled pty.node against
+      # this runner's glibc. Recompile it in manylinux_2_28 so the app runs on any
+      # distro with glibc >= 2.28, whatever image ubuntu-latest points at today.
+      - name: Rebuild node-pty for old glibc
+        if: matrix.platform == 'linux'
+        run: bash scripts/build-node-pty-linux.sh
+
+      # maker-rpm shells out to rpmbuild, which the Ubuntu image lacks.
+      - name: Install rpm tooling
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
       # Re-run the gates here rather than trusting the earlier CI run: these are the
       # exact binaries being shipped, built from this checkout.
       - name: Type check
@@ -152,6 +164,10 @@ jobs:
 
       - name: Make distributables
         run: npm run make
+
+      - name: Check Linux glibc floor
+        if: matrix.platform == 'linux'
+        run: bash scripts/check-linux-glibc.sh 2.28 3.4.25 out
 
       - name: Upload artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -181,6 +197,20 @@ jobs:
           find artifacts -name '*.nupkg' -delete
           find artifacts -name 'RELEASES' -delete
 
+      # The Linux makers write pre-release versions with '~' (1.0.0~rc2), which is
+      # what makes dpkg and rpm sort them BEFORE 1.0.0. GitHub rewrites special
+      # characters in asset names on upload, so the downloaded file would no longer
+      # match SHA256SUMS. Rename to '.' here; only the filename changes, the
+      # package metadata inside keeps the '~' and its upgrade ordering.
+      - name: Normalise artifact filenames
+        run: |
+          set -euo pipefail
+          find artifacts -type f -name '*~*' -print0 |
+            while IFS= read -r -d '' f; do
+              d=$(dirname "$f"); b=$(basename "$f")
+              mv -v "$f" "$d/${b//\~/.}"
+            done
+
       # Fail before drafting if any expected platform artifact is missing — a maker
       # silently not running must not produce a partial release.
       - name: Verify expected artifacts
@@ -201,6 +231,7 @@ jobs:
           check "CodeHerd-linux-x64-*.zip"
           check "CodeHerd-darwin-*-*.dmg"
           check "codeherd_*_amd64.deb"
+          check "codeherd-*.x86_64.rpm"
 
       # Guards against shipping artifacts built from a different version than the tag
       # claims — e.g. a stale out/ directory or a half-applied version bump.
@@ -224,7 +255,7 @@ jobs:
           # accepted spelling as a literal substring: a regex here would need the dots
           # escaping, and getting that subtly wrong turns them into wildcards that match
           # almost anything, which is worse than no check at all.
-          for f in artifacts/**/codeherd_*.deb; do
+          for f in artifacts/**/codeherd_*.deb artifacts/**/codeherd-*.rpm; do
             base=$(basename "$f")
             matched=
             for sep in '-' '.' '~'; do
@@ -232,7 +263,7 @@ jobs:
               case "$base" in *"$candidate"*) matched=1 ;; esac
             done
             if [ -z "$matched" ]; then
-              echo "::error::Debian artifact '$base' does not carry version $VERSION (any of - . ~ accepted before a prerelease suffix)."
+              echo "::error::Linux package '$base' does not carry version $VERSION (any of - . ~ accepted before a prerelease suffix)."
               exit 1
             fi
           done
@@ -244,7 +275,7 @@ jobs:
         run: |
           set -euo pipefail
           cd artifacts
-          find . -type f \( -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*-Setup.exe' \) -print0 |
+          find . -type f \( -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*-Setup.exe' \) -print0 |
             while IFS= read -r -d '' f; do
               (cd "$(dirname "$f")" && sha256sum "$(basename "$f")")
             done | sort -k2 > SHA256SUMS
@@ -260,6 +291,7 @@ jobs:
             artifacts/**/*.zip
             artifacts/**/*.dmg
             artifacts/**/*.deb
+            artifacts/**/*.rpm
             artifacts/**/*-Setup.exe
 
       # --draft: creates no tag and is invisible to users. Publishing it by hand mints
